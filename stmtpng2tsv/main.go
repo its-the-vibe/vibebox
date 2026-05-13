@@ -234,7 +234,7 @@ Return JSON only (no markdown), with this exact schema:
   "statement_year": 2026,
   "transactions": [
     {
-      "date": "10 Mar",
+      "date": "2026-05-13",
       "description": "MAINTAINING THE ACCOUNT - MONTHLY FEE",
       "money_in": "",
       "money_out": "3.00",
