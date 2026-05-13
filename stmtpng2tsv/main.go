@@ -123,7 +123,7 @@ func defaultModel() string {
 	if v := strings.TrimSpace(os.Getenv("STMTPNG2TSV_MODEL")); v != "" {
 		return v
 	}
-	return "gpt-5"
+	return "gpt-4.1"
 }
 
 func resolveInputPath(inputFlag string, positional []string) (string, error) {
