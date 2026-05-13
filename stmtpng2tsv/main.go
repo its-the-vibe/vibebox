@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	_ "embed"
 	"encoding/csv"
@@ -11,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -25,8 +23,6 @@ import (
 
 //go:embed SKILL.md
 var skillSpec string
-
-var ocrExtractor = extractOCRText
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -78,11 +74,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	ctx := context.Background()
-	ocrText, err := ocrExtractor(ctx, inputPath)
-	if err != nil {
-		fmt.Fprintf(stderr, "error: OCR failed: %v\n", err)
-		return 1
-	}
 
 	agent, err := newCopilotAgent(*modelFlag)
 	if err != nil {
@@ -91,7 +82,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	defer agent.Close()
 
-	agentText, err := agent.ExtractTransactions(ctx, inputPath, ocrText)
+	agentText, err := agent.ExtractTransactions(ctx, inputPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "error: transaction extraction failed: %v\n", err)
 		return 1
@@ -105,7 +96,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	yearHint := parsed.StatementYear
 	if yearHint == 0 {
-		yearHint = inferYearFromText(ocrText)
+		yearHint = inferYearFromText(agentText)
 	}
 
 	txns, err := normalizeTransactions(parsed.Transactions, yearHint)
@@ -152,28 +143,6 @@ func resolveInputPath(inputFlag string, positional []string) (string, error) {
 	return positional[0], nil
 }
 
-func extractOCRText(ctx context.Context, imagePath string) (string, error) {
-	cmd := exec.CommandContext(ctx, "tesseract", imagePath, "stdout", "--psm", "6")
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &errOut
-
-	if err := cmd.Run(); err != nil {
-		detail := strings.TrimSpace(errOut.String())
-		if detail == "" {
-			detail = err.Error()
-		}
-		return "", fmt.Errorf("tesseract failed: %s", detail)
-	}
-
-	text := strings.TrimSpace(out.String())
-	if text == "" {
-		return "", errors.New("no text extracted from image")
-	}
-	return text, nil
-}
-
 type copilotAgent struct {
 	client  *copilot.Client
 	session *copilot.Session
@@ -207,7 +176,7 @@ func (a *copilotAgent) Close() {
 	}
 }
 
-func (a *copilotAgent) ExtractTransactions(ctx context.Context, imagePath, ocrText string) (string, error) {
+func (a *copilotAgent) ExtractTransactions(ctx context.Context, imagePath string) (string, error) {
 	var mu sync.Mutex
 	assistantText := ""
 	done := make(chan struct{})
@@ -226,7 +195,7 @@ func (a *copilotAgent) ExtractTransactions(ctx context.Context, imagePath, ocrTe
 	defer unsubscribe()
 
 	_, err := a.session.Send(ctx, copilot.MessageOptions{
-		Prompt: buildExtractionPrompt(ocrText),
+		Prompt: buildExtractionPrompt(),
 		Attachments: []copilot.Attachment{
 			copilot.UserMessageAttachment{
 				Type:        copilot.UserMessageAttachmentTypeFile,
@@ -253,15 +222,12 @@ func (a *copilotAgent) ExtractTransactions(ctx context.Context, imagePath, ocrTe
 	return assistantText, nil
 }
 
-func buildExtractionPrompt(ocrText string) string {
+func buildExtractionPrompt() string {
 	return strings.TrimSpace(`Use this extraction spec:
 
 ` + skillSpec + `
 
-OCR text from bank statement PNG:
----
-` + ocrText + `
----
+Use the attached PNG directly for text extraction (do not require external OCR input).
 
 Return JSON only (no markdown), with this exact schema:
 {

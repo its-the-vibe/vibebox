@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -12,6 +13,13 @@ func TestExtractJSONPayload(t *testing.T) {
 	want := `{"statement_year":2026,"transactions":[]}`
 	if got != want {
 		t.Fatalf("extractJSONPayload() = %q, want %q", got, want)
+	}
+}
+
+func TestBuildExtractionPrompt(t *testing.T) {
+	prompt := buildExtractionPrompt()
+	if !strings.Contains(prompt, "Use the attached PNG directly for text extraction") {
+		t.Fatalf("buildExtractionPrompt() missing image extraction instruction")
 	}
 }
 

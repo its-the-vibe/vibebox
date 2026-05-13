@@ -14,8 +14,8 @@ If `-output` is omitted, a default `<input-name>-YYYY-MM.tsv` file is generated 
 
 ## Requirements
 
-- `tesseract` must be installed and available on `PATH` for OCR.
 - GitHub Copilot authentication must be available for Copilot SDK usage.
+- Use an image-capable model (for example `gpt-4.1`), so extraction can run directly from the PNG attachment.
 
 ## Build and test
 
