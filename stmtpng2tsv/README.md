@@ -8,14 +8,23 @@
 go run . -input /path/to/statement.png -output /path/to/santander-2026-03.tsv
 # or with positional input path
 go run . /path/to/statement.png -output /path/to/santander-2026-03.tsv
+
+# Using Gemini backend
+export GEMINI_API_KEY=your_api_key
+go run . -backend gemini -input /path/to/statement.png
 ```
 
 If `-output` is omitted, a default `<input-name>-YYYY-MM.tsv` file is generated next to the input file.
 
+## Backends
+
+- `copilot` (default): Uses GitHub Copilot SDK. Requires Copilot authentication.
+- `gemini`: Uses Google Gemini models via `go-genai`. Requires `GEMINI_API_KEY` environment variable.
+
 ## Requirements
 
-- GitHub Copilot authentication must be available for Copilot SDK usage.
-- Use an image-capable model (for example `gpt-4.1`), so extraction can run directly from the PNG attachment.
+- For Copilot: GitHub Copilot authentication must be available. Use an image-capable model (for example `gpt-4.1`).
+- For Gemini: A valid Google Gemini API key. Default model is `gemini-1.5-flash`.
 
 ## Build and test
 

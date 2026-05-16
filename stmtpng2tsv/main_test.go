@@ -87,3 +87,32 @@ func TestInferYearFromText(t *testing.T) {
 		t.Fatalf("inferYearFromText() = %d, want 2026", got)
 	}
 }
+
+func TestDefaultBackend(t *testing.T) {
+	os.Unsetenv("STMTPNG2TSV_BACKEND")
+	if got := defaultBackend(); got != "copilot" {
+		t.Errorf("defaultBackend() = %q, want %q", got, "copilot")
+	}
+
+	os.Setenv("STMTPNG2TSV_BACKEND", "gemini")
+	defer os.Unsetenv("STMTPNG2TSV_BACKEND")
+	if got := defaultBackend(); got != "gemini" {
+		t.Errorf("defaultBackend() = %q, want %q", got, "gemini")
+	}
+}
+
+func TestDefaultModel(t *testing.T) {
+	os.Unsetenv("STMTPNG2TSV_MODEL")
+	if got := defaultModel("copilot"); got != "gpt-4.1" {
+		t.Errorf("defaultModel(copilot) = %q, want %q", got, "gpt-4.1")
+	}
+	if got := defaultModel("gemini"); got != "gemini-1.5-flash" {
+		t.Errorf("defaultModel(gemini) = %q, want %q", got, "gemini-1.5-flash")
+	}
+
+	os.Setenv("STMTPNG2TSV_MODEL", "custom-model")
+	defer os.Unsetenv("STMTPNG2TSV_MODEL")
+	if got := defaultModel("copilot"); got != "custom-model" {
+		t.Errorf("defaultModel(copilot) = %q, want %q", got, "custom-model")
+	}
+}
