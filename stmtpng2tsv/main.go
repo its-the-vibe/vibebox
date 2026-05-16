@@ -19,6 +19,7 @@ import (
 	"time"
 
 	copilot "github.com/github/copilot-sdk/go"
+	"github.com/joho/godotenv"
 	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/option"
 )
@@ -57,6 +58,7 @@ type transactionRaw struct {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
+	_ = godotenv.Load()
 	fs := flag.NewFlagSet("stmtpng2tsv", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 
@@ -137,7 +139,7 @@ func defaultBackend() string {
 	if v := strings.TrimSpace(os.Getenv("STMTPNG2TSV_BACKEND")); v != "" {
 		return strings.ToLower(v)
 	}
-	return "gemini"
+	return "copilot"
 }
 
 func defaultModel(backend string) string {
@@ -145,7 +147,7 @@ func defaultModel(backend string) string {
 		return v
 	}
 	if backend == "gemini" {
-		return "gemini-flash-latest"
+		return "gemini-1.5-flash"
 	}
 	return "gpt-4.1"
 }
