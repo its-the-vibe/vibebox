@@ -18,16 +18,13 @@ If `-output` is omitted, a default `<input-name>-YYYY-MM.tsv` file is generated 
 
 ## Backends
 
-- `copilot` (default): Uses GitHub Copilot SDK. Requires Copilot authentication.
-- `gemini`: Uses Google Gemini models via `go-genai`. Requires `GEMINI_API_KEY` environment variable (can be provided via `.env` file).
+- `copilot`: Uses GitHub Copilot SDK. Requires Copilot authentication.
+- `gemini` (default): Uses Google Gemini models via `go-genai`. Requires `GEMINI_API_KEY` environment variable.
 
 ## Requirements
 
 - For Copilot: GitHub Copilot authentication must be available. Use an image-capable model (for example `gpt-4.1`).
-- For Gemini: A valid Google Gemini API key. Default model is `gemini-1.5-flash`. You can create a `.env` file in the same directory to store your API key:
-  ```
-  GEMINI_API_KEY=your_api_key_here
-  ```
+- For Gemini: A valid Google Gemini API key. Default model is `gemini-flash-latest`.
 
 ## Build and test
 
