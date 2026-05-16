@@ -20,6 +20,7 @@ import (
 
 	copilot "github.com/github/copilot-sdk/go"
 	"github.com/google/generative-ai-go/genai"
+	"github.com/joho/godotenv"
 	"google.golang.org/api/option"
 )
 
@@ -57,6 +58,7 @@ type transactionRaw struct {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
+	_ = godotenv.Load()
 	fs := flag.NewFlagSet("stmtpng2tsv", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 
