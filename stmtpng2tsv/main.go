@@ -19,6 +19,9 @@ import (
 	"time"
 
 	copilot "github.com/github/copilot-sdk/go"
+	"github.com/google/generative-ai-go/genai"
+	"github.com/joho/godotenv"
+	"google.golang.org/api/option"
 )
 
 //go:embed SKILL.md
@@ -26,6 +29,11 @@ var skillSpec string
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+type transactionExtractor interface {
+	ExtractTransactions(ctx context.Context, imagePath string) (string, error)
+	Close() error
 }
 
 type transaction struct {
@@ -50,12 +58,14 @@ type transactionRaw struct {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
+	_ = godotenv.Load()
 	fs := flag.NewFlagSet("stmtpng2tsv", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 
 	inputFlag := fs.String("input", "", "Path to bank statement PNG file")
 	outputFlag := fs.String("output", "", "Path to output TSV file")
-	modelFlag := fs.String("model", defaultModel(), "Copilot model to use")
+	backendFlag := fs.String("backend", defaultBackend(), "Extraction backend (copilot or gemini)")
+	modelFlag := fs.String("model", "", "Model to use (overrides backend default)")
 
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -75,14 +85,20 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	ctx := context.Background()
 
-	agent, err := newCopilotAgent(*modelFlag)
+	backend := strings.ToLower(*backendFlag)
+	model := *modelFlag
+	if model == "" {
+		model = defaultModel(backend)
+	}
+
+	extractor, err := newExtractor(backend, model)
 	if err != nil {
-		fmt.Fprintf(stderr, "error: could not initialize Copilot agent: %v\n", err)
+		fmt.Fprintf(stderr, "error: could not initialize %s extractor: %v\n", backend, err)
 		return 1
 	}
-	defer agent.Close()
+	defer extractor.Close()
 
-	agentText, err := agent.ExtractTransactions(ctx, inputPath)
+	agentText, err := extractor.ExtractTransactions(ctx, inputPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "error: transaction extraction failed: %v\n", err)
 		return 1
@@ -119,11 +135,32 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func defaultModel() string {
+func defaultBackend() string {
+	if v := strings.TrimSpace(os.Getenv("STMTPNG2TSV_BACKEND")); v != "" {
+		return strings.ToLower(v)
+	}
+	return "gemini"
+}
+
+func defaultModel(backend string) string {
 	if v := strings.TrimSpace(os.Getenv("STMTPNG2TSV_MODEL")); v != "" {
 		return v
 	}
+	if backend == "gemini" {
+		return "gemini-flash-latest"
+	}
 	return "gpt-4.1"
+}
+
+func newExtractor(backend, model string) (transactionExtractor, error) {
+	switch backend {
+	case "copilot":
+		return newCopilotExtractor(model)
+	case "gemini":
+		return newGeminiExtractor(model)
+	default:
+		return nil, fmt.Errorf("unsupported backend: %s", backend)
+	}
 }
 
 func resolveInputPath(inputFlag string, positional []string) (string, error) {
@@ -143,12 +180,12 @@ func resolveInputPath(inputFlag string, positional []string) (string, error) {
 	return positional[0], nil
 }
 
-type copilotAgent struct {
+type copilotExtractor struct {
 	client  *copilot.Client
 	session *copilot.Session
 }
 
-func newCopilotAgent(model string) (*copilotAgent, error) {
+func newCopilotExtractor(model string) (*copilotExtractor, error) {
 	ctx := context.Background()
 	client := copilot.NewClient(&copilot.ClientOptions{LogLevel: "error"})
 	if err := client.Start(ctx); err != nil {
@@ -164,25 +201,26 @@ func newCopilotAgent(model string) (*copilotAgent, error) {
 		return nil, err
 	}
 
-	return &copilotAgent{client: client, session: session}, nil
+	return &copilotExtractor{client: client, session: session}, nil
 }
 
-func (a *copilotAgent) Close() {
-	if a.session != nil {
-		_ = a.session.Disconnect()
+func (e *copilotExtractor) Close() error {
+	if e.session != nil {
+		_ = e.session.Disconnect()
 	}
-	if a.client != nil {
-		_ = a.client.Stop()
+	if e.client != nil {
+		return e.client.Stop()
 	}
+	return nil
 }
 
-func (a *copilotAgent) ExtractTransactions(ctx context.Context, imagePath string) (string, error) {
+func (e *copilotExtractor) ExtractTransactions(ctx context.Context, imagePath string) (string, error) {
 	var mu sync.Mutex
 	assistantText := ""
 	done := make(chan struct{})
 	var once sync.Once
 
-	unsubscribe := a.session.On(func(event copilot.SessionEvent) {
+	unsubscribe := e.session.On(func(event copilot.SessionEvent) {
 		switch d := event.Data.(type) {
 		case *copilot.AssistantMessageData:
 			mu.Lock()
@@ -194,7 +232,7 @@ func (a *copilotAgent) ExtractTransactions(ctx context.Context, imagePath string
 	})
 	defer unsubscribe()
 
-	_, err := a.session.Send(ctx, copilot.MessageOptions{
+	_, err := e.session.Send(ctx, copilot.MessageOptions{
 		Prompt: buildExtractionPrompt(),
 		Attachments: []copilot.Attachment{
 			copilot.UserMessageAttachment{
@@ -220,6 +258,69 @@ func (a *copilotAgent) ExtractTransactions(ctx context.Context, imagePath string
 		return "", errors.New("empty response from Copilot agent")
 	}
 	return assistantText, nil
+}
+
+type geminiExtractor struct {
+	client *genai.Client
+	model  *genai.GenerativeModel
+}
+
+func newGeminiExtractor(modelName string) (*geminiExtractor, error) {
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	if apiKey == "" {
+		return nil, errors.New("GEMINI_API_KEY environment variable not set")
+	}
+
+	ctx := context.Background()
+	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
+	if err != nil {
+		return nil, err
+	}
+
+	model := client.GenerativeModel(modelName)
+	model.ResponseMIMEType = "application/json"
+
+	return &geminiExtractor{client: client, model: model}, nil
+}
+
+func (e *geminiExtractor) Close() error {
+	if e.client != nil {
+		return e.client.Close()
+	}
+	return nil
+}
+
+func (e *geminiExtractor) ExtractTransactions(ctx context.Context, imagePath string) (string, error) {
+	imgData, err := os.ReadFile(imagePath)
+	if err != nil {
+		return "", err
+	}
+
+	prompt := buildExtractionPrompt()
+	resp, err := e.model.GenerateContent(ctx,
+		genai.Text(prompt),
+		genai.ImageData("png", imgData),
+	)
+	if err != nil {
+		return "", err
+	}
+
+	if len(resp.Candidates) == 0 {
+		return "", errors.New("no candidates in Gemini response")
+	}
+
+	var sb strings.Builder
+	for _, part := range resp.Candidates[0].Content.Parts {
+		if txt, ok := part.(genai.Text); ok {
+			sb.WriteString(string(txt))
+		}
+	}
+
+	res := sb.String()
+	if strings.TrimSpace(res) == "" {
+		return "", errors.New("empty response from Gemini")
+	}
+	return res, nil
 }
 
 func buildExtractionPrompt() string {
