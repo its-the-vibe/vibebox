@@ -137,7 +137,7 @@ func defaultBackend() string {
 	if v := strings.TrimSpace(os.Getenv("STMTPNG2TSV_BACKEND")); v != "" {
 		return strings.ToLower(v)
 	}
-	return "copilot"
+	return "gemini"
 }
 
 func defaultModel(backend string) string {
@@ -145,7 +145,7 @@ func defaultModel(backend string) string {
 		return v
 	}
 	if backend == "gemini" {
-		return "gemini-1.5-flash"
+		return "gemini-flash-latest"
 	}
 	return "gpt-4.1"
 }
