@@ -19,9 +19,8 @@ import (
 	"time"
 
 	copilot "github.com/github/copilot-sdk/go"
-	"github.com/google/generative-ai-go/genai"
 	"github.com/joho/godotenv"
-	"google.golang.org/api/option"
+	"google.golang.org/genai"
 )
 
 //go:embed SKILL.md
@@ -261,8 +260,8 @@ func (e *copilotExtractor) ExtractTransactions(ctx context.Context, imagePath st
 }
 
 type geminiExtractor struct {
-	client *genai.Client
-	model  *genai.GenerativeModel
+	client    *genai.Client
+	modelName string
 }
 
 func newGeminiExtractor(modelName string) (*geminiExtractor, error) {
@@ -272,21 +271,17 @@ func newGeminiExtractor(modelName string) (*geminiExtractor, error) {
 	}
 
 	ctx := context.Background()
-	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey: apiKey,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	model := client.GenerativeModel(modelName)
-	model.ResponseMIMEType = "application/json"
-
-	return &geminiExtractor{client: client, model: model}, nil
+	return &geminiExtractor{client: client, modelName: modelName}, nil
 }
 
 func (e *geminiExtractor) Close() error {
-	if e.client != nil {
-		return e.client.Close()
-	}
 	return nil
 }
 
@@ -297,26 +292,24 @@ func (e *geminiExtractor) ExtractTransactions(ctx context.Context, imagePath str
 	}
 
 	prompt := buildExtractionPrompt()
-	resp, err := e.model.GenerateContent(ctx,
-		genai.Text(prompt),
-		genai.ImageData("png", imgData),
-	)
+
+	contents := []*genai.Content{
+		{
+			Parts: []*genai.Part{
+				{Text: prompt},
+				{InlineData: &genai.Blob{Data: imgData, MIMEType: "image/png"}},
+			},
+		},
+	}
+
+	resp, err := e.client.Models.GenerateContent(ctx, e.modelName, contents, &genai.GenerateContentConfig{
+		ResponseMIMEType: "application/json",
+	})
 	if err != nil {
 		return "", err
 	}
 
-	if len(resp.Candidates) == 0 {
-		return "", errors.New("no candidates in Gemini response")
-	}
-
-	var sb strings.Builder
-	for _, part := range resp.Candidates[0].Content.Parts {
-		if txt, ok := part.(genai.Text); ok {
-			sb.WriteString(string(txt))
-		}
-	}
-
-	res := sb.String()
+	res := resp.Text()
 	if strings.TrimSpace(res) == "" {
 		return "", errors.New("empty response from Gemini")
 	}

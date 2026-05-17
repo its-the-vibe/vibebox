@@ -19,7 +19,7 @@ If `-output` is omitted, a default `<input-name>-YYYY-MM.tsv` file is generated 
 ## Backends
 
 - `copilot`: Uses GitHub Copilot SDK. Requires Copilot authentication.
-- `gemini` (default): Uses Google Gemini models via `go-genai`. Requires `GEMINI_API_KEY` environment variable.
+- `gemini` (default): Uses Google Gemini models via `google.golang.org/genai`. Requires `GEMINI_API_KEY` environment variable.
 
 ## Requirements
 
