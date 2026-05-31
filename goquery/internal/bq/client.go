@@ -23,5 +23,11 @@ func (s *Service) Close() error {
 }
 
 func (s *Service) Run(ctx context.Context, query string) (*bigquery.RowIterator, error) {
-	return s.client.Query(query).Read(ctx)
+	return s.RunWithParameters(ctx, query, nil)
+}
+
+func (s *Service) RunWithParameters(ctx context.Context, query string, parameters []bigquery.QueryParameter) (*bigquery.RowIterator, error) {
+	q := s.client.Query(query)
+	q.Parameters = parameters
+	return q.Read(ctx)
 }
