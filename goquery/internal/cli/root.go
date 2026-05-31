@@ -7,6 +7,7 @@ import (
 	"io"
 	"math/big"
 	"os"
+	"path/filepath"
 	"time"
 
 	"cloud.google.com/go/bigquery"
@@ -56,7 +57,8 @@ func newQueryCommand() *cobra.Command {
 				return fmt.Errorf("accepts 1 arg(s), received %d", len(args))
 			}
 
-			query, err := bq.LookupQuery(args[0])
+			queryConfigPath := resolveQueryConfigPath()
+			query, err := bq.LookupQuery(queryConfigPath, args[0])
 			if err != nil {
 				return err
 			}
@@ -81,6 +83,17 @@ func newQueryCommand() *cobra.Command {
 			return printRows(cmd.OutOrStdout(), iter)
 		},
 	}
+}
+
+func resolveQueryConfigPath() string {
+	if path := os.Getenv("GOQUERY_QUERIES_FILE"); path != "" {
+		return path
+	}
+	defaultPath := filepath.Join("bin", "queries.json")
+	if _, err := os.Stat(defaultPath); err == nil {
+		return defaultPath
+	}
+	return "queries.json"
 }
 
 func printRows(out io.Writer, iter *bigquery.RowIterator) error {

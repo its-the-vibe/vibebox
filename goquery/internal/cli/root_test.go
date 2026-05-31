@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -35,6 +37,13 @@ func TestRunQueryNoArgsShowsHelp(t *testing.T) {
 func TestRunQueryInvalidName(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
+
+	tempDir := t.TempDir()
+	queryConfigPath := filepath.Join(tempDir, "queries.json")
+	if err := os.WriteFile(queryConfigPath, []byte(`{"monthly-balance-extremes":"SELECT 1"}`), 0o644); err != nil {
+		t.Fatalf("write query config: %v", err)
+	}
+	t.Setenv("GOQUERY_QUERIES_FILE", queryConfigPath)
 
 	exitCode := Run([]string{"query", "invalid-name"}, &stdout, &stderr)
 	if exitCode != 1 {
