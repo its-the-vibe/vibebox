@@ -6,7 +6,7 @@
 
 ## Prerequisites
 
-- Go 1.21+
+- Go 1.25.8+
 - Google Application Default Credentials configured
 - `GOOGLE_PROJECT_ID` environment variable set
 
