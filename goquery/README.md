@@ -31,6 +31,16 @@ export GOQUERY_QUERIES_FILE=/path/to/queries.json
 ./bin/goquery query monthly-balance-extremes
 ```
 
+`queries.json` format:
+
+```json
+{
+  "monthly-balance-extremes": {
+    "file": "queries/monthly-balance-extremes.sql"
+  }
+}
+```
+
 Example output format:
 
 ```text

@@ -58,7 +58,12 @@ func newQueryCommand() *cobra.Command {
 			}
 
 			queryConfigPath := resolveQueryConfigPath()
-			query, err := bq.LookupQuery(queryConfigPath, args[0])
+			queryRegistry, err := bq.LoadQueryRegistry(queryConfigPath)
+			if err != nil {
+				return err
+			}
+
+			query, err := bq.LookupQuery(queryRegistry, args[0])
 			if err != nil {
 				return err
 			}
@@ -89,9 +94,12 @@ func resolveQueryConfigPath() string {
 	if path := os.Getenv("GOQUERY_QUERIES_FILE"); path != "" {
 		return path
 	}
-	defaultPath := filepath.Join("bin", "queries.json")
-	if _, err := os.Stat(defaultPath); err == nil {
-		return defaultPath
+
+	if executablePath, err := os.Executable(); err == nil {
+		executableConfigPath := filepath.Join(filepath.Dir(executablePath), "queries.json")
+		if _, err := os.Stat(executableConfigPath); err == nil {
+			return executableConfigPath
+		}
 	}
 	return "queries.json"
 }
