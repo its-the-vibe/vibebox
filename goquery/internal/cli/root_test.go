@@ -39,12 +39,12 @@ func TestRunQueryInvalidName(t *testing.T) {
 	var stderr bytes.Buffer
 
 	tempDir := t.TempDir()
-	queryConfigPath := filepath.Join(tempDir, "queries.json")
-	querySQLPath := filepath.Join(tempDir, "monthly-balance-extremes.sql")
+	queryConfigPath := filepath.Join(tempDir, "queries.example.json")
+	querySQLPath := filepath.Join(tempDir, "monthly-balance-extremes.example.sql")
 	if err := os.WriteFile(querySQLPath, []byte("SELECT 1"), 0o644); err != nil {
 		t.Fatalf("write query sql: %v", err)
 	}
-	if err := os.WriteFile(queryConfigPath, []byte(`{"monthly-balance-extremes":{"file":"monthly-balance-extremes.sql"}}`), 0o644); err != nil {
+	if err := os.WriteFile(queryConfigPath, []byte(`{"monthly-balance-extremes":{"file":"monthly-balance-extremes.example.sql"}}`), 0o644); err != nil {
 		t.Fatalf("write query config: %v", err)
 	}
 	t.Setenv("GOQUERY_QUERIES_FILE", queryConfigPath)
