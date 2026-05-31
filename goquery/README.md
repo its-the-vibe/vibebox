@@ -22,6 +22,12 @@ make lint
 ```bash
 export GOOGLE_PROJECT_ID=my-gcp-project
 ./bin/goquery query monthly-balance-extremes
+
+# inspect table schema
+./bin/goquery schema my_dataset my_table
+
+# override project for schema inspection
+./bin/goquery schema --project my-gcp-project my_dataset my_table
 ```
 
 Use a custom query config file at runtime:
@@ -48,4 +54,13 @@ Year-Month | Max Balance | Max Date   | Min Balance | Min Date
 ----------------------------------------------------------------
 2025-05    | 5230.50     | 2025-05-12 | 1120.00     | 2025-05-29
 2025-04    | 4800.00     | 2025-04-01 | 950.25      | 2025-04-18
+```
+
+Schema output format:
+
+```text
+Name | Type | Mode | Description
+--------------------------------
+id | INT64 | REQUIRED | Account identifier
+created_at | TIMESTAMP | NULLABLE | Creation timestamp
 ```

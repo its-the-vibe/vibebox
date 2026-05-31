@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	"cloud.google.com/go/bigquery"
@@ -15,6 +16,12 @@ import (
 	"github.com/its-the-vibe/vibebox/goquery/internal/bq"
 	"github.com/spf13/cobra"
 	"google.golang.org/api/iterator"
+)
+
+var (
+	projectIDPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]{5,29}$`)
+	datasetPattern   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	tablePattern     = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
 
 func Run(args []string, stdout, stderr io.Writer) int {
@@ -42,6 +49,7 @@ func newRootCommand(stdout, stderr io.Writer) *cobra.Command {
 	rootCmd.SetOut(stdout)
 	rootCmd.SetErr(stderr)
 	rootCmd.AddCommand(newQueryCommand())
+	rootCmd.AddCommand(newSchemaCommand())
 	return rootCmd
 }
 
@@ -90,6 +98,77 @@ func newQueryCommand() *cobra.Command {
 	}
 }
 
+func newSchemaCommand() *cobra.Command {
+	var projectID string
+
+	cmd := &cobra.Command{
+		Use:   "schema <dataset> <table>",
+		Short: "Inspect a BigQuery table schema",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return cmd.Help()
+			}
+			if len(args) != 2 {
+				return fmt.Errorf("accepts 2 arg(s), received %d", len(args))
+			}
+
+			dataset := args[0]
+			table := args[1]
+			if !isValidDatasetName(dataset) {
+				return fmt.Errorf("invalid dataset name %q", dataset)
+			}
+			if !isValidTableName(table) {
+				return fmt.Errorf("invalid table name %q", table)
+			}
+
+			if projectID == "" {
+				projectID = os.Getenv("GOOGLE_PROJECT_ID")
+			}
+			if projectID == "" {
+				return errors.New("GOOGLE_PROJECT_ID is required")
+			}
+			if !isValidProjectID(projectID) {
+				return fmt.Errorf("invalid project id %q", projectID)
+			}
+
+			ctx := context.Background()
+			service, err := bq.NewService(ctx, projectID)
+			if err != nil {
+				return err
+			}
+			defer service.Close()
+
+			schemaQuery := fmt.Sprintf("SELECT\n"+
+				"  column_name AS name,\n"+
+				"  data_type AS type,\n"+
+				"  CASE\n"+
+				"    WHEN STARTS_WITH(data_type, 'ARRAY<') THEN 'REPEATED'\n"+
+				"    WHEN is_nullable = 'YES' THEN 'NULLABLE'\n"+
+				"    ELSE 'REQUIRED'\n"+
+				"  END AS mode,\n"+
+				"  COALESCE(description, '') AS description\n"+
+				"FROM\n"+
+				"  `%s.%s.INFORMATION_SCHEMA.COLUMNS`\n"+
+				"WHERE\n"+
+				"  table_name = @table_name\n"+
+				"ORDER BY\n"+
+				"  ordinal_position", projectID, dataset)
+
+			iter, err := service.RunWithParameters(ctx, schemaQuery, []bigquery.QueryParameter{
+				{Name: "table_name", Value: table},
+			})
+			if err != nil {
+				return err
+			}
+
+			return printSchemaRows(cmd.OutOrStdout(), iter, dataset, table)
+		},
+	}
+
+	cmd.Flags().StringVarP(&projectID, "project", "p", "", "Google Cloud project ID (defaults to GOOGLE_PROJECT_ID)")
+	return cmd
+}
+
 func resolveQueryConfigPath() string {
 	if path := os.Getenv("GOQUERY_QUERIES_FILE"); path != "" {
 		return path
@@ -129,6 +208,53 @@ func printRows(out io.Writer, iter *bigquery.RowIterator) error {
 			formatDate(row[4]),
 		)
 	}
+}
+
+type schemaRow struct {
+	Name        string
+	Type        string
+	Mode        string
+	Description string
+}
+
+func printSchemaRows(out io.Writer, iter *bigquery.RowIterator, dataset, table string) error {
+	fmt.Fprintln(out, "Name | Type | Mode | Description")
+	fmt.Fprintln(out, "--------------------------------")
+
+	found := false
+	for {
+		var row schemaRow
+		err := iter.Next(&row)
+		if errors.Is(err, iterator.Done) {
+			if !found {
+				return fmt.Errorf("no schema information found for table %q in dataset %q", table, dataset)
+			}
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		found = true
+		fmt.Fprintf(out, "%s | %s | %s | %s\n",
+			formatCell(row.Name),
+			formatCell(row.Type),
+			formatCell(row.Mode),
+			formatCell(row.Description),
+		)
+	}
+}
+
+func isValidProjectID(projectID string) bool {
+	return projectIDPattern.MatchString(projectID)
+}
+
+func isValidDatasetName(dataset string) bool {
+	return len(dataset) >= 1 && len(dataset) <= 1024 && datasetPattern.MatchString(dataset)
+}
+
+func isValidTableName(table string) bool {
+	return len(table) >= 1 && len(table) <= 1024 && tablePattern.MatchString(table)
 }
 
 func formatCell(v any) string {
