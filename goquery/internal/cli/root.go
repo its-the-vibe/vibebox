@@ -139,20 +139,25 @@ func newSchemaCommand() *cobra.Command {
 			defer service.Close()
 
 			schemaQuery := fmt.Sprintf("SELECT\n"+
-				"  column_name AS name,\n"+
-				"  data_type AS type,\n"+
+				"  c.column_name AS name,\n"+
+				"  c.data_type AS type,\n"+
 				"  CASE\n"+
-				"    WHEN STARTS_WITH(data_type, 'ARRAY<') THEN 'REPEATED'\n"+
-				"    WHEN is_nullable = 'YES' THEN 'NULLABLE'\n"+
+				"    WHEN STARTS_WITH(c.data_type, 'ARRAY<') THEN 'REPEATED'\n"+
+				"    WHEN c.is_nullable = 'YES' THEN 'NULLABLE'\n"+
 				"    ELSE 'REQUIRED'\n"+
 				"  END AS mode,\n"+
-				"  COALESCE(description, '') AS description\n"+
+				"  COALESCE(cfp.description, '') AS description\n"+
 				"FROM\n"+
-				"  `%s.%s.INFORMATION_SCHEMA.COLUMNS`\n"+
+				"  `%s.%s.INFORMATION_SCHEMA.COLUMNS` c\n"+
+				"LEFT JOIN\n"+
+				"  `%s.%s.INFORMATION_SCHEMA.COLUMN_FIELD_PATHS` cfp\n"+
+				"ON\n"+
+				"  c.table_name = cfp.table_name\n"+
+				"  AND c.column_name = cfp.column_name\n"+
 				"WHERE\n"+
-				"  table_name = @table_name\n"+
+				"  c.table_name = @table_name\n"+
 				"ORDER BY\n"+
-				"  ordinal_position", projectID, dataset)
+				"  c.ordinal_position", projectID, dataset, projectID, dataset)
 
 			iter, err := service.RunWithParameters(ctx, schemaQuery, []bigquery.QueryParameter{
 				{Name: "table_name", Value: table},
