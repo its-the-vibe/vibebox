@@ -19,7 +19,7 @@ import (
 )
 
 var (
-	projectIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{5,29}$`)
+	projectIDPattern = regexp.MustCompile(`^[A-Za-z0-9:.-]+$`)
 	datasetPattern   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 	tablePattern     = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
@@ -227,7 +227,7 @@ func printSchemaRows(out io.Writer, iter *bigquery.RowIterator, dataset, table s
 		err := iter.Next(&row)
 		if errors.Is(err, iterator.Done) {
 			if !found {
-				return fmt.Errorf("table %q not found in dataset %q", table, dataset)
+				return fmt.Errorf("no schema information found for table %q in dataset %q", table, dataset)
 			}
 			return nil
 		}
