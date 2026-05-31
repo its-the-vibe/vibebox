@@ -1,0 +1,5 @@
+{
+  "monthly-balance-extremes": {
+    "file": "queries/monthly-balance-extremes.example.sql"
+  }
+}
