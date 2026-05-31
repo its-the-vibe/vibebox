@@ -98,3 +98,17 @@ func TestRunSchemaInvalidDatasetName(t *testing.T) {
 		t.Fatalf("expected invalid dataset error, got %q", stderr.String())
 	}
 }
+
+func TestRunSchemaInvalidTableName(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	t.Setenv("GOOGLE_PROJECT_ID", "my-project")
+
+	exitCode := Run([]string{"schema", "my_dataset", "invalid.table"}, &stdout, &stderr)
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "Error: invalid table name \"invalid.table\"") {
+		t.Fatalf("expected invalid table error, got %q", stderr.String())
+	}
+}

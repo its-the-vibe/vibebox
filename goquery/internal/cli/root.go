@@ -19,8 +19,9 @@ import (
 )
 
 var (
-	projectIDPattern = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
-	datasetPattern   = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
+	projectIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{5,29}$`)
+	datasetPattern   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	tablePattern     = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
 
 func Run(args []string, stdout, stderr io.Writer) int {
@@ -116,6 +117,9 @@ func newSchemaCommand() *cobra.Command {
 			if !isValidDatasetName(dataset) {
 				return fmt.Errorf("invalid dataset name %q", dataset)
 			}
+			if !isValidTableName(table) {
+				return fmt.Errorf("invalid table name %q", table)
+			}
 
 			if projectID == "" {
 				projectID = os.Getenv("GOOGLE_PROJECT_ID")
@@ -137,7 +141,11 @@ func newSchemaCommand() *cobra.Command {
 			schemaQuery := fmt.Sprintf("SELECT\n"+
 				"  column_name AS name,\n"+
 				"  data_type AS type,\n"+
-				"  CASE WHEN is_nullable = 'YES' THEN 'NULLABLE' ELSE 'REQUIRED' END AS mode,\n"+
+				"  CASE\n"+
+				"    WHEN STARTS_WITH(data_type, 'ARRAY<') THEN 'REPEATED'\n"+
+				"    WHEN is_nullable = 'YES' THEN 'NULLABLE'\n"+
+				"    ELSE 'REQUIRED'\n"+
+				"  END AS mode,\n"+
 				"  COALESCE(description, '') AS description\n"+
 				"FROM\n"+
 				"  `%s.%s.INFORMATION_SCHEMA.COLUMNS`\n"+
@@ -242,7 +250,11 @@ func isValidProjectID(projectID string) bool {
 }
 
 func isValidDatasetName(dataset string) bool {
-	return datasetPattern.MatchString(dataset)
+	return len(dataset) >= 1 && len(dataset) <= 1024 && datasetPattern.MatchString(dataset)
+}
+
+func isValidTableName(table string) bool {
+	return len(table) >= 1 && len(table) <= 1024 && tablePattern.MatchString(table)
 }
 
 func formatCell(v any) string {
