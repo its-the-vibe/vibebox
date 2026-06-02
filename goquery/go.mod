@@ -7,7 +7,7 @@ require (
 	cloud.google.com/go/bigquery v1.77.0
 	github.com/joho/godotenv v1.5.1
 	github.com/spf13/cobra v1.10.1
-	google.golang.org/api v0.282.0
+	google.golang.org/api v0.283.0
 )
 
 require (
