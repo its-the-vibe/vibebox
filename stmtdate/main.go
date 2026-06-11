@@ -138,7 +138,10 @@ func parsePDFCreationDate(value string) (time.Time, error) {
 func renameFileWithMonth(filePath, statementMonth string) (string, error) {
 	newPath := renamedPath(filePath, statementMonth)
 	if _, err := os.Stat(newPath); err == nil {
-		return "", fmt.Errorf("target file already exists: %s", newPath)
+		// File exists, delete it
+		if err := os.Remove(newPath); err != nil {
+			return "", err
+		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
