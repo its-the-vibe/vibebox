@@ -3,7 +3,7 @@ module github.com/its-the-vibe/vibebox/stmtpng2tsv
 go 1.26.3
 
 require (
-	github.com/github/copilot-sdk/go v0.3.0
+	github.com/github/copilot-sdk/go v1.0.1
 	github.com/joho/godotenv v1.5.1
 	google.golang.org/genai v1.57.0
 )
