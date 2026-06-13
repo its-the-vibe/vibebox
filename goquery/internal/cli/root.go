@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"time"
 
 	"cloud.google.com/go/bigquery"
@@ -50,7 +51,36 @@ func newRootCommand(stdout, stderr io.Writer) *cobra.Command {
 	rootCmd.SetErr(stderr)
 	rootCmd.AddCommand(newQueryCommand())
 	rootCmd.AddCommand(newSchemaCommand())
+	rootCmd.AddCommand(newListCommand())
 	return rootCmd
+}
+
+func newListCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List all available queries",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			queryConfigPath := resolveQueryConfigPath()
+			queryRegistry, err := bq.LoadQueryRegistry(queryConfigPath)
+			if err != nil {
+				return err
+			}
+
+			names := make([]string, 0, len(queryRegistry))
+			for name := range queryRegistry {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+
+			out := cmd.OutOrStdout()
+			fmt.Fprintln(out, "Available queries:")
+			for _, name := range names {
+				fmt.Fprintf(out, "  - %s\n", name)
+			}
+
+			return nil
+		},
+	}
 }
 
 func newQueryCommand() *cobra.Command {

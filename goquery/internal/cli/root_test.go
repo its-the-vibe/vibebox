@@ -112,3 +112,65 @@ func TestRunSchemaInvalidTableName(t *testing.T) {
 		t.Fatalf("expected invalid table error, got %q", stderr.String())
 	}
 }
+
+func TestRunList(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	tempDir := t.TempDir()
+	queryConfigPath := filepath.Join(tempDir, "queries.json")
+	if err := os.WriteFile(queryConfigPath, []byte(`{
+		"query-b":{"sql":"SELECT 2"},
+		"query-a":{"sql":"SELECT 1"}
+	}`), 0o644); err != nil {
+		t.Fatalf("write query config: %v", err)
+	}
+	t.Setenv("GOQUERY_QUERIES_FILE", queryConfigPath)
+
+	exitCode := Run([]string{"list"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d. stderr: %s", exitCode, stderr.String())
+	}
+
+	expected := "Available queries:\n  - query-a\n  - query-b\n"
+	if stdout.String() != expected {
+		t.Fatalf("expected output %q, got %q", expected, stdout.String())
+	}
+}
+
+func TestRunListEmptyConfig(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	tempDir := t.TempDir()
+	queryConfigPath := filepath.Join(tempDir, "queries.json")
+	if err := os.WriteFile(queryConfigPath, []byte(`{}`), 0o644); err != nil {
+		t.Fatalf("write query config: %v", err)
+	}
+	t.Setenv("GOQUERY_QUERIES_FILE", queryConfigPath)
+
+	exitCode := Run([]string{"list"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d. stderr: %s", exitCode, stderr.String())
+	}
+
+	expected := "Available queries:\n"
+	if stdout.String() != expected {
+		t.Fatalf("expected output %q, got %q", expected, stdout.String())
+	}
+}
+
+func TestRunListMissingConfig(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	t.Setenv("GOQUERY_QUERIES_FILE", "non-existent.json")
+
+	exitCode := Run([]string{"list"}, &stdout, &stderr)
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "Error: failed to read query config") {
+		t.Fatalf("expected config read error, got %q", stderr.String())
+	}
+}

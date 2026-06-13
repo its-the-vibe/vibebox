@@ -23,6 +23,9 @@ make lint
 export GOOGLE_PROJECT_ID=my-gcp-project
 ./bin/goquery query monthly-balance-extremes
 
+# list available queries
+./bin/goquery list
+
 # inspect table schema
 ./bin/goquery schema my_dataset my_table
 
