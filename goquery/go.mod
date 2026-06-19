@@ -1,6 +1,6 @@
 module github.com/its-the-vibe/vibebox/goquery
 
-go 1.26.3
+go 1.26.4
 
 require (
 	cloud.google.com/go v0.123.0
