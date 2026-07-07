@@ -1,6 +1,6 @@
 module github.com/its-the-vibe/vibebox/stmtdate
 
-go 1.26.4
+go 1.26.5
 
 require github.com/pdfcpu/pdfcpu v0.13.0
 
