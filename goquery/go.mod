@@ -4,7 +4,7 @@ go 1.26.5
 
 require (
 	cloud.google.com/go v0.123.0
-	cloud.google.com/go/bigquery v1.78.0
+	cloud.google.com/go/bigquery v1.79.0
 	github.com/joho/godotenv v1.5.1
 	github.com/spf13/cobra v1.10.2
 	google.golang.org/api v0.288.0
