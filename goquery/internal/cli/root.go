@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/bigquery"
@@ -219,11 +220,28 @@ func resolveQueryConfigPath() string {
 }
 
 func printRows(out io.Writer, iter *bigquery.RowIterator) error {
-	fmt.Fprintln(out, "Year-Month | Max Balance | Max Date   | Min Balance | Min Date")
-	fmt.Fprintln(out, "----------------------------------------------------------------")
+	var row []bigquery.Value
+	err := iter.Next(&row)
+	if errors.Is(err, iterator.Done) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	schema := iter.Schema
+	header := schemaHeader(schema)
+	if header != "" {
+		fmt.Fprintln(out, header)
+		fmt.Fprintln(out, strings.Repeat("-", len(header)))
+	}
+
+	if err := printRow(out, row, schema); err != nil {
+		return err
+	}
 
 	for {
-		var row []bigquery.Value
+		row = nil
 		err := iter.Next(&row)
 		if errors.Is(err, iterator.Done) {
 			return nil
@@ -231,17 +249,42 @@ func printRows(out io.Writer, iter *bigquery.RowIterator) error {
 		if err != nil {
 			return err
 		}
-		if len(row) < 5 {
+
+		if err := printRow(out, row, schema); err != nil {
+			return err
+		}
+	}
+}
+
+func schemaHeader(schema bigquery.Schema) string {
+	headers := make([]string, 0, len(schema))
+	for _, field := range schema {
+		headers = append(headers, field.Name)
+	}
+	return strings.Join(headers, " | ")
+}
+
+func printRow(out io.Writer, row []bigquery.Value, schema bigquery.Schema) error {
+	cells := make([]string, len(row))
+	for i, value := range row {
+		if i < len(schema) {
+			cells[i] = formatByType(value, schema[i].Type)
 			continue
 		}
+		cells[i] = formatCell(value)
+	}
+	_, err := fmt.Fprintln(out, strings.Join(cells, " | "))
+	return err
+}
 
-		fmt.Fprintf(out, "%s | %s | %s | %s | %s\n",
-			formatCell(row[0]),
-			formatNumber(row[1]),
-			formatDate(row[2]),
-			formatNumber(row[3]),
-			formatDate(row[4]),
-		)
+func formatByType(v any, fieldType bigquery.FieldType) string {
+	switch fieldType {
+	case bigquery.NumericFieldType, bigquery.BigNumericFieldType, bigquery.FloatFieldType, bigquery.IntegerFieldType:
+		return formatNumber(v)
+	case bigquery.DateFieldType, bigquery.DateTimeFieldType, bigquery.TimestampFieldType, bigquery.TimeFieldType:
+		return formatDate(v)
+	default:
+		return formatCell(v)
 	}
 }
 
