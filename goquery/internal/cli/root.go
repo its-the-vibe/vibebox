@@ -23,7 +23,7 @@ import (
 var (
 	projectIDPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]{5,29}$`)
 	datasetPattern   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-	tablePattern     = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	tablePattern     = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
 )
 
 func Run(args []string, stdout, stderr io.Writer) int {
