@@ -269,9 +269,9 @@ func printRow(out io.Writer, row []bigquery.Value, schema bigquery.Schema) error
 	for i, value := range row {
 		if i < len(schema) {
 			cells[i] = formatByType(value, schema[i].Type)
-			continue
+		} else {
+			cells[i] = formatCell(value)
 		}
-		cells[i] = formatCell(value)
 	}
 	_, err := fmt.Fprintln(out, strings.Join(cells, " | "))
 	return err
