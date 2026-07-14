@@ -220,8 +220,8 @@ func resolveQueryConfigPath() string {
 }
 
 func printRows(out io.Writer, iter *bigquery.RowIterator) error {
-	var row []bigquery.Value
-	err := iter.Next(&row)
+	var firstRow []bigquery.Value
+	err := iter.Next(&firstRow)
 	if errors.Is(err, iterator.Done) {
 		return nil
 	}
@@ -230,30 +230,66 @@ func printRows(out io.Writer, iter *bigquery.RowIterator) error {
 	}
 
 	schema := iter.Schema
-	header := schemaHeader(schema)
-	if header != "" {
-		fmt.Fprintln(out, header)
-		fmt.Fprintln(out, strings.Repeat("-", len(header)))
-	}
 
-	if err := printRow(out, row, schema); err != nil {
-		return err
-	}
-
+	// Collect all rows so we can compute column widths before printing.
+	allValues := [][]bigquery.Value{firstRow}
 	for {
-		row = nil
+		var row []bigquery.Value
 		err := iter.Next(&row)
 		if errors.Is(err, iterator.Done) {
-			return nil
+			break
 		}
 		if err != nil {
 			return err
 		}
+		allValues = append(allValues, row)
+	}
 
-		if err := printRow(out, row, schema); err != nil {
+	// Format every row as strings.
+	formattedRows := make([][]string, len(allValues))
+	for i, row := range allValues {
+		cells := make([]string, len(row))
+		for j, value := range row {
+			if j < len(schema) {
+				cells[j] = formatByType(value, schema[j].Type)
+			} else {
+				cells[j] = formatCell(value)
+			}
+		}
+		formattedRows[i] = cells
+	}
+
+	// Build header names.
+	headers := make([]string, len(schema))
+	for i, field := range schema {
+		headers[i] = field.Name
+	}
+
+	if len(headers) == 0 {
+		for _, row := range formattedRows {
+			if _, err := fmt.Fprintln(out, strings.Join(row, " | ")); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	widths := calcColumnWidths(append([][]string{headers}, formattedRows...))
+	sepLen := columnSepLen(widths)
+
+	if _, err := fmt.Fprintln(out, formatTableRow(headers, widths)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(out, strings.Repeat("-", sepLen)); err != nil {
+		return err
+	}
+	for _, row := range formattedRows {
+		if _, err := fmt.Fprintln(out, formatTableRow(row, widths)); err != nil {
 			return err
 		}
 	}
+
+	return nil
 }
 
 func schemaHeader(schema bigquery.Schema) string {
@@ -262,6 +298,51 @@ func schemaHeader(schema bigquery.Schema) string {
 		headers = append(headers, field.Name)
 	}
 	return strings.Join(headers, " | ")
+}
+
+// calcColumnWidths returns the maximum character width of each column across all rows.
+func calcColumnWidths(rows [][]string) []int {
+	if len(rows) == 0 {
+		return nil
+	}
+	widths := make([]int, len(rows[0]))
+	for _, row := range rows {
+		for i, cell := range row {
+			if i < len(widths) && len(cell) > widths[i] {
+				widths[i] = len(cell)
+			}
+		}
+	}
+	return widths
+}
+
+// columnSepLen returns the total display length of a separator line for the given column widths.
+func columnSepLen(widths []int) int {
+	total := 0
+	for i, w := range widths {
+		total += w
+		if i < len(widths)-1 {
+			total += 3 // " | "
+		}
+	}
+	return total
+}
+
+// formatTableRow joins cells with " | " separators, padding each to its column width.
+// The last cell is not padded with trailing spaces.
+func formatTableRow(cells []string, widths []int) string {
+	if len(cells) == 0 {
+		return ""
+	}
+	parts := make([]string, len(cells))
+	for i, cell := range cells {
+		if i < len(widths) && i != len(cells)-1 && widths[i] > len(cell) {
+			parts[i] = cell + strings.Repeat(" ", widths[i]-len(cell))
+		} else {
+			parts[i] = cell
+		}
+	}
+	return strings.Join(parts, " | ")
 }
 
 func printRow(out io.Writer, row []bigquery.Value, schema bigquery.Schema) error {
@@ -296,31 +377,52 @@ type schemaRow struct {
 }
 
 func printSchemaRows(out io.Writer, iter *bigquery.RowIterator, dataset, table string) error {
-	fmt.Fprintln(out, "Name | Type | Mode | Description")
-	fmt.Fprintln(out, "--------------------------------")
-
-	found := false
+	// Collect all rows so we can compute column widths before printing.
+	var rows []schemaRow
 	for {
 		var row schemaRow
 		err := iter.Next(&row)
 		if errors.Is(err, iterator.Done) {
-			if !found {
-				return fmt.Errorf("no schema information found for table %q in dataset %q", table, dataset)
-			}
-			return nil
+			break
 		}
 		if err != nil {
 			return err
 		}
+		rows = append(rows, row)
+	}
 
-		found = true
-		fmt.Fprintf(out, "%s | %s | %s | %s\n",
+	if len(rows) == 0 {
+		return fmt.Errorf("no schema information found for table %q in dataset %q", table, dataset)
+	}
+
+	headers := []string{"Name", "Type", "Mode", "Description"}
+
+	formattedRows := make([][]string, len(rows))
+	for i, row := range rows {
+		formattedRows[i] = []string{
 			formatCell(row.Name),
 			formatCell(row.Type),
 			formatCell(row.Mode),
 			formatCell(row.Description),
-		)
+		}
 	}
+
+	widths := calcColumnWidths(append([][]string{headers}, formattedRows...))
+	sepLen := columnSepLen(widths)
+
+	if _, err := fmt.Fprintln(out, formatTableRow(headers, widths)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(out, strings.Repeat("-", sepLen)); err != nil {
+		return err
+	}
+	for _, row := range formattedRows {
+		if _, err := fmt.Fprintln(out, formatTableRow(row, widths)); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func isValidProjectID(projectID string) bool {
