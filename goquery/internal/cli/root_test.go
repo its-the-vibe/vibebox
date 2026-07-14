@@ -252,3 +252,64 @@ func TestPrintRowUsesSchemaFormatting(t *testing.T) {
 		t.Fatalf("unexpected output: %q", out.String())
 	}
 }
+
+func TestCalcColumnWidths(t *testing.T) {
+	rows := [][]string{
+		{"Name", "Type", "Mode", "Description"},
+		{"id", "INT64", "REQUIRED", "Account identifier"},
+		{"created_at", "TIMESTAMP", "NULLABLE", "Creation timestamp"},
+	}
+	got := calcColumnWidths(rows)
+	want := []int{10, 9, 8, 18}
+	if len(got) != len(want) {
+		t.Fatalf("calcColumnWidths() length = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("calcColumnWidths()[%d] = %d, want %d", i, got[i], want[i])
+		}
+	}
+}
+
+func TestCalcColumnWidthsEmpty(t *testing.T) {
+	if got := calcColumnWidths(nil); got != nil {
+		t.Fatalf("calcColumnWidths(nil) = %v, want nil", got)
+	}
+}
+
+func TestFormatTableRow(t *testing.T) {
+	tests := []struct {
+		name   string
+		cells  []string
+		widths []int
+		want   string
+	}{
+		{
+			name:   "pads middle columns but not last",
+			cells:  []string{"id", "INT64", "REQUIRED", "Account identifier"},
+			widths: []int{10, 9, 8, 18},
+			want:   "id         | INT64     | REQUIRED | Account identifier",
+		},
+		{
+			name:   "single column returns cell as-is",
+			cells:  []string{"value"},
+			widths: []int{10},
+			want:   "value",
+		},
+		{
+			name:   "cells already at max width",
+			cells:  []string{"year_month", "max_balance"},
+			widths: []int{10, 11},
+			want:   "year_month | max_balance",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := formatTableRow(tc.cells, tc.widths)
+			if got != tc.want {
+				t.Fatalf("formatTableRow() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
