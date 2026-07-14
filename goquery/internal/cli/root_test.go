@@ -2,10 +2,15 @@ package cli
 
 import (
 	"bytes"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"cloud.google.com/go/bigquery"
+	"cloud.google.com/go/civil"
 )
 
 func TestRunNoArgsShowsHelp(t *testing.T) {
@@ -172,5 +177,78 @@ func TestRunListMissingConfig(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "Error: failed to read query config") {
 		t.Fatalf("expected config read error, got %q", stderr.String())
+	}
+}
+
+func TestSchemaHeader(t *testing.T) {
+	header := schemaHeader(bigquery.Schema{
+		{Name: "year_month"},
+		{Name: "max_balance"},
+		{Name: "max_date"},
+	})
+
+	if header != "year_month | max_balance | max_date" {
+		t.Fatalf("unexpected header: %q", header)
+	}
+}
+
+func TestFormatByType(t *testing.T) {
+	tests := []struct {
+		name      string
+		value     any
+		fieldType bigquery.FieldType
+		want      string
+	}{
+		{
+			name:      "numeric",
+			value:     big.NewRat(12345, 100),
+			fieldType: bigquery.NumericFieldType,
+			want:      "123.45",
+		},
+		{
+			name:      "timestamp",
+			value:     time.Date(2026, 7, 14, 18, 30, 0, 0, time.UTC),
+			fieldType: bigquery.TimestampFieldType,
+			want:      "2026-07-14",
+		},
+		{
+			name:      "date",
+			value:     civil.Date{Year: 2026, Month: 7, Day: 14},
+			fieldType: bigquery.DateFieldType,
+			want:      "2026-07-14",
+		},
+		{
+			name:      "string",
+			value:     "account-a",
+			fieldType: bigquery.StringFieldType,
+			want:      "account-a",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := formatByType(tc.value, tc.fieldType)
+			if got != tc.want {
+				t.Fatalf("formatByType() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPrintRowUsesSchemaFormatting(t *testing.T) {
+	var out bytes.Buffer
+	row := []bigquery.Value{"2026-07", big.NewRat(12345, 100), civil.Date{Year: 2026, Month: 7, Day: 14}}
+	schema := bigquery.Schema{
+		{Name: "year_month", Type: bigquery.StringFieldType},
+		{Name: "max_balance", Type: bigquery.NumericFieldType},
+		{Name: "max_date", Type: bigquery.DateFieldType},
+	}
+
+	if err := printRow(&out, row, schema); err != nil {
+		t.Fatalf("printRow() error = %v", err)
+	}
+
+	if out.String() != "2026-07 | 123.45 | 2026-07-14\n" {
+		t.Fatalf("unexpected output: %q", out.String())
 	}
 }
