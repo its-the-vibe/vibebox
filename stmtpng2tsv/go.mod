@@ -3,7 +3,7 @@ module github.com/its-the-vibe/vibebox/stmtpng2tsv
 go 1.26.5
 
 require (
-	github.com/github/copilot-sdk/go v0.3.0
+	github.com/github/copilot-sdk/go v1.0.8
 	github.com/joho/godotenv v1.5.1
 	google.golang.org/genai v1.57.0
 )
@@ -13,6 +13,8 @@ require (
 	cloud.google.com/go/auth v0.20.0 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/coder/websocket v1.8.15 // indirect
+	github.com/ebitengine/purego v0.10.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
