@@ -2,7 +2,7 @@ module github.com/its-the-vibe/vibebox/stmtdate
 
 go 1.26.5
 
-require github.com/pdfcpu/pdfcpu v0.14.0
+require github.com/pdfcpu/pdfcpu v0.15.0
 
 require (
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
