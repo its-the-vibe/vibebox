@@ -234,10 +234,9 @@ func (e *copilotExtractor) ExtractTransactions(ctx context.Context, imagePath st
 	_, err := e.session.Send(ctx, copilot.MessageOptions{
 		Prompt: buildExtractionPrompt(),
 		Attachments: []copilot.Attachment{
-			copilot.UserMessageAttachment{
-				Type:        copilot.UserMessageAttachmentTypeFile,
-				DisplayName: copilot.String(filepath.Base(imagePath)),
-				Path:        copilot.String(imagePath),
+			&copilot.AttachmentFile{
+				Path:        imagePath,
+				DisplayName: filepath.Base(imagePath),
 			},
 		},
 	})
