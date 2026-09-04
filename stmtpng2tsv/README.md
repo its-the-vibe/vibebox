@@ -1,6 +1,6 @@
 # stmtpng2tsv
 
-`stmtpng2tsv` extracts transactions from a PNG bank statement and writes them to a pipe-delimited TSV file.
+`stmtpng2tsv` extracts transactions from PNG bank statements and writes them to a pipe-delimited TSV file.
 
 ## Usage
 
@@ -9,12 +9,18 @@ go run . -input /path/to/statement.png -output /path/to/santander-2026-03.tsv
 # or with positional input path
 go run . /path/to/statement.png -output /path/to/santander-2026-03.tsv
 
+# Explicit Santander format (default)
+go run . -bank santander -input /path/to/statement.png -output /path/to/santander-2026-03.tsv
+
+# SumUp format with multi-page PNG inputs
+go run . -bank sumup -output /path/to/sumup-2026-03.tsv /path/to/statement-page1.png /path/to/statement-page2.png
+
 # Using Gemini backend
 export GEMINI_API_KEY=your_api_key
 go run . -backend gemini -input /path/to/statement.png
 ```
 
-If `-output` is omitted, a default `<input-name>-YYYY-MM.tsv` file is generated next to the input file.
+If `-output` is omitted, a default `<input-name>-YYYY-MM.tsv` file is generated next to the first input file.
 
 ## Backends
 

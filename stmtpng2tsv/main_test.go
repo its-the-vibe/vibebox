@@ -17,9 +17,16 @@ func TestExtractJSONPayload(t *testing.T) {
 }
 
 func TestBuildExtractionPrompt(t *testing.T) {
-	prompt := buildExtractionPrompt()
+	prompt := buildExtractionPrompt("santander")
 	if !strings.Contains(prompt, "Use the attached PNG directly for text extraction") {
 		t.Fatalf("buildExtractionPrompt() missing image extraction instruction")
+	}
+}
+
+func TestBuildExtractionPromptSumUp(t *testing.T) {
+	prompt := buildExtractionPrompt("sumup")
+	if !strings.Contains(prompt, "Date, Reference, Type, Amount, Description") {
+		t.Fatalf("buildExtractionPrompt(sumup) missing SumUp header detection instruction")
 	}
 }
 
@@ -114,5 +121,79 @@ func TestDefaultModel(t *testing.T) {
 	defer os.Unsetenv("STMTPNG2TSV_MODEL")
 	if got := defaultModel("copilot"); got != "custom-model" {
 		t.Errorf("defaultModel(copilot) = %q, want %q", got, "custom-model")
+	}
+}
+
+func TestNormalizeBankFormat(t *testing.T) {
+	tests := []struct {
+		in      string
+		want    string
+		wantErr bool
+	}{
+		{in: "", want: "santander"},
+		{in: "santander", want: "santander"},
+		{in: "SUMUP", want: "sumup"},
+		{in: "unknown", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		got, err := normalizeBankFormat(tt.in)
+		if tt.wantErr {
+			if err == nil {
+				t.Fatalf("normalizeBankFormat(%q) expected error", tt.in)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("normalizeBankFormat(%q) error = %v", tt.in, err)
+		}
+		if got != tt.want {
+			t.Fatalf("normalizeBankFormat(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestResolveInputPaths(t *testing.T) {
+	t.Run("single flag input", func(t *testing.T) {
+		got, err := resolveInputPaths("statement.png", nil)
+		if err != nil {
+			t.Fatalf("resolveInputPaths() error = %v", err)
+		}
+		if len(got) != 1 || got[0] != "statement.png" {
+			t.Fatalf("resolveInputPaths() = %#v, want [statement.png]", got)
+		}
+	})
+
+	t.Run("multiple positional inputs", func(t *testing.T) {
+		got, err := resolveInputPaths("", []string{"page2.png", "page1.png"})
+		if err != nil {
+			t.Fatalf("resolveInputPaths() error = %v", err)
+		}
+		if len(got) != 2 {
+			t.Fatalf("resolveInputPaths() len = %d, want 2", len(got))
+		}
+	})
+}
+
+func TestSortPathsLogical(t *testing.T) {
+	paths := []string{"statement-page10.png", "statement-page2.png", "statement-page1.png"}
+	sortPathsLogical(paths)
+	want := []string{"statement-page1.png", "statement-page2.png", "statement-page10.png"}
+	for i := range want {
+		if paths[i] != want[i] {
+			t.Fatalf("sortPathsLogical() = %#v, want %#v", paths, want)
+		}
+	}
+}
+
+func TestSortTransactionsByDate(t *testing.T) {
+	txns := []transaction{
+		{Date: "2026-03-10", Description: "B"},
+		{Date: "2026-03-01", Description: "A"},
+		{Date: "2026-03-10", Description: "C"},
+	}
+	sortTransactionsByDate(txns)
+	if txns[0].Date != "2026-03-01" || txns[1].Description != "B" || txns[2].Description != "C" {
+		t.Fatalf("sortTransactionsByDate() unexpected order: %#v", txns)
 	}
 }
