@@ -28,6 +28,12 @@ func TestBuildExtractionPromptSumUp(t *testing.T) {
 	if !strings.Contains(prompt, "Date, Reference, Type, Amount, Description") {
 		t.Fatalf("buildExtractionPrompt(sumup) missing SumUp header detection instruction")
 	}
+	if !strings.Contains(prompt, "positive values to money_in; negative values to money_out") {
+		t.Fatalf("buildExtractionPrompt(sumup) missing amount mapping instruction")
+	}
+	if !strings.Contains(prompt, "joined with \" - \" and omit empty fields") {
+		t.Fatalf("buildExtractionPrompt(sumup) missing description mapping instruction")
+	}
 }
 
 func TestNormalizeDate(t *testing.T) {

@@ -206,7 +206,7 @@ func resolveInputPaths(inputFlag string, positional []string) ([]string, error) 
 }
 
 func sortPathsLogical(paths []string) {
-	sort.Slice(paths, func(i, j int) bool {
+	sort.SliceStable(paths, func(i, j int) bool {
 		return logicalStringLess(paths[i], paths[j])
 	})
 }
