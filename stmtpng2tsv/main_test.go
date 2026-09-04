@@ -178,6 +178,9 @@ func TestResolveInputPaths(t *testing.T) {
 		if len(got) != 2 {
 			t.Fatalf("resolveInputPaths() len = %d, want 2", len(got))
 		}
+		if got[0] != "page2.png" || got[1] != "page1.png" {
+			t.Fatalf("resolveInputPaths() = %#v, want [page2.png page1.png]", got)
+		}
 	})
 }
 

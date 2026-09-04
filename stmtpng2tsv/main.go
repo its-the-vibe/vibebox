@@ -258,6 +258,17 @@ func logicalStringLess(a, b string) bool {
 
 func sortTransactionsByDate(txns []transaction) {
 	sort.SliceStable(txns, func(i, j int) bool {
+		ti, errI := time.Parse("2006-01-02", txns[i].Date)
+		tj, errJ := time.Parse("2006-01-02", txns[j].Date)
+		if errI == nil && errJ == nil {
+			return ti.Before(tj)
+		}
+		if errI == nil {
+			return true
+		}
+		if errJ == nil {
+			return false
+		}
 		return txns[i].Date < txns[j].Date
 	})
 }
