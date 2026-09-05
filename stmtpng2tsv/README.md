@@ -10,10 +10,10 @@ go run . -input /path/to/statement.png -output /path/to/santander-2026-03.tsv
 go run . /path/to/statement.png -output /path/to/santander-2026-03.tsv
 
 # Explicit Santander format (default)
-go run . -bank santander -input /path/to/statement.png -output /path/to/santander-2026-03.tsv
+go run . -format santander -input /path/to/statement.png -output /path/to/santander-2026-03.tsv
 
 # SumUp format with multi-page PNG inputs
-go run . -bank sumup -output /path/to/sumup-2026-03.tsv /path/to/statement-page1.png /path/to/statement-page2.png
+go run . -format sumup -output /path/to/sumup-2026-03.tsv /path/to/statement-page1.png /path/to/statement-page2.png
 
 # Using Gemini backend
 export GEMINI_API_KEY=your_api_key

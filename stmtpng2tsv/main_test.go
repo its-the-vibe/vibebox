@@ -28,11 +28,8 @@ func TestBuildExtractionPromptSumUp(t *testing.T) {
 	if !strings.Contains(prompt, "Date, Reference, Type, Amount, Description") {
 		t.Fatalf("buildExtractionPrompt(sumup) missing SumUp header detection instruction")
 	}
-	if !strings.Contains(prompt, "positive values to money_in; negative values to money_out") {
-		t.Fatalf("buildExtractionPrompt(sumup) missing amount mapping instruction")
-	}
-	if !strings.Contains(prompt, "joined with \" - \" and omit empty fields") {
-		t.Fatalf("buildExtractionPrompt(sumup) missing description mapping instruction")
+	if !strings.Contains(prompt, "\"reference\": \"Payout\"") || !strings.Contains(prompt, "\"amount\": \"-3.00\"") {
+		t.Fatalf("buildExtractionPrompt(sumup) missing SumUp response schema")
 	}
 }
 
@@ -79,7 +76,7 @@ func TestWriteTSV(t *testing.T) {
 		Balance:     "737.26",
 	}}
 
-	if err := writeTSV(path, txns); err != nil {
+	if err := writeTSV(path, txns, "santander"); err != nil {
 		t.Fatalf("writeTSV() error = %v", err)
 	}
 
@@ -89,6 +86,32 @@ func TestWriteTSV(t *testing.T) {
 	}
 
 	want := "Date|Description|Money In|Money Out|Balance\n2026-03-10|MONTHLY FEE||3.00|737.26\n"
+	if string(data) != want {
+		t.Fatalf("TSV contents = %q, want %q", string(data), want)
+	}
+}
+
+func TestWriteTSVSumUp(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "out.tsv")
+	txns := []transaction{{
+		Date:        "2026-03-10",
+		Reference:   "Payout",
+		Type:        "Transfer",
+		Amount:      "-3.00",
+		Description: "Bank transfer fee",
+	}}
+
+	if err := writeTSV(path, txns, "sumup"); err != nil {
+		t.Fatalf("writeTSV(sumup) error = %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	want := "Date|Reference|Type|Amount|Description\n2026-03-10|Payout|Transfer|-3.00|Bank transfer fee\n"
 	if string(data) != want {
 		t.Fatalf("TSV contents = %q, want %q", string(data), want)
 	}
@@ -130,7 +153,7 @@ func TestDefaultModel(t *testing.T) {
 	}
 }
 
-func TestNormalizeBankFormat(t *testing.T) {
+func TestNormalizeFormat(t *testing.T) {
 	tests := []struct {
 		in      string
 		want    string
@@ -143,18 +166,18 @@ func TestNormalizeBankFormat(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got, err := normalizeBankFormat(tt.in)
+		got, err := normalizeFormat(tt.in)
 		if tt.wantErr {
 			if err == nil {
-				t.Fatalf("normalizeBankFormat(%q) expected error", tt.in)
+				t.Fatalf("normalizeFormat(%q) expected error", tt.in)
 			}
 			continue
 		}
 		if err != nil {
-			t.Fatalf("normalizeBankFormat(%q) error = %v", tt.in, err)
+			t.Fatalf("normalizeFormat(%q) error = %v", tt.in, err)
 		}
 		if got != tt.want {
-			t.Fatalf("normalizeBankFormat(%q) = %q, want %q", tt.in, got, tt.want)
+			t.Fatalf("normalizeFormat(%q) = %q, want %q", tt.in, got, tt.want)
 		}
 	}
 }
@@ -204,5 +227,27 @@ func TestSortTransactionsByDate(t *testing.T) {
 	sortTransactionsByDate(txns)
 	if txns[0].Date != "2026-03-01" || txns[1].Description != "B" || txns[2].Description != "C" {
 		t.Fatalf("sortTransactionsByDate() unexpected order: %#v", txns)
+	}
+}
+
+func TestNormalizeTransactionsSumUp(t *testing.T) {
+	raw := []map[string]any{
+		{
+			"date":        "10/03/2026",
+			"reference":   "Payout",
+			"type":        "Transfer",
+			"amount":      "£1,234.50",
+			"description": "Bank transfer",
+		},
+	}
+	txns, err := normalizeTransactions(raw, 2026, "sumup")
+	if err != nil {
+		t.Fatalf("normalizeTransactions(sumup) error = %v", err)
+	}
+	if len(txns) != 1 {
+		t.Fatalf("normalizeTransactions(sumup) len = %d, want 1", len(txns))
+	}
+	if txns[0].Date != "2026-03-10" || txns[0].Reference != "Payout" || txns[0].Type != "Transfer" || txns[0].Amount != "1234.50" || txns[0].Description != "Bank transfer" {
+		t.Fatalf("normalizeTransactions(sumup) unexpected txn: %#v", txns[0])
 	}
 }
