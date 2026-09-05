@@ -1,13 +1,15 @@
 # SKILL: Bank Statement Transaction Extractor
 
 ## Skill Purpose
-Extract transactions from the "Your transactions" or "My transactions" section of a PNG bank statement, convert them to a pipe-separated (|) format with ISO-formatted dates, and save to a file.
+Extract transactions from supported PNG bank statement formats (Santander and SumUp), convert them to a pipe-separated (|) format with ISO-formatted dates, and save to a file.
 
 ## Skill Workflow
 1. Accept a PNG file containing a bank statement as input.
 2. Perform OCR to extract text from the image.
-3. Identify the section labeled "Your transactions" or "My transactions".
-4. Parse the transaction table, extracting:
+3. Detect the transaction table based on bank format:
+   - Santander: section labeled "Your transactions" or "My transactions"
+   - SumUp: header row with Date, Reference, Type, Amount, Description
+4. Parse the transaction table, extracting or mapping to:
    - Date
    - Description
    - Money In

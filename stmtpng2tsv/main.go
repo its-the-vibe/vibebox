@@ -31,12 +31,15 @@ func main() {
 }
 
 type transactionExtractor interface {
-	ExtractTransactions(ctx context.Context, imagePath string) (string, error)
+	ExtractTransactions(ctx context.Context, imagePath, format string) (string, error)
 	Close() error
 }
 
 type transaction struct {
 	Date        string
+	Reference   string
+	Type        string
+	Amount      string
 	Description string
 	MoneyIn     string
 	MoneyOut    string
@@ -45,15 +48,7 @@ type transaction struct {
 
 type agentResponse struct {
 	StatementYear int              `json:"statement_year"`
-	Transactions  []transactionRaw `json:"transactions"`
-}
-
-type transactionRaw struct {
-	Date        any `json:"date"`
-	Description any `json:"description"`
-	MoneyIn     any `json:"money_in"`
-	MoneyOut    any `json:"money_out"`
-	Balance     any `json:"balance"`
+	Transactions  []map[string]any `json:"transactions"`
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
@@ -63,6 +58,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	inputFlag := fs.String("input", "", "Path to bank statement PNG file")
 	outputFlag := fs.String("output", "", "Path to output TSV file")
+	formatFlag := fs.String("format", "santander", "Statement format (santander or sumup)")
 	backendFlag := fs.String("backend", defaultBackend(), "Extraction backend (copilot or gemini)")
 	modelFlag := fs.String("model", "", "Model to use (overrides backend default)")
 
@@ -70,17 +66,27 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	inputPath, err := resolveInputPath(*inputFlag, fs.Args())
+	inputPaths, err := resolveInputPaths(*inputFlag, fs.Args())
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		fs.Usage()
 		return 2
 	}
 
-	if strings.ToLower(filepath.Ext(inputPath)) != ".png" {
-		fmt.Fprintf(stderr, "error: input must be a .png file\n")
+	format, err := normalizeFormat(*formatFlag)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		fs.Usage()
 		return 2
 	}
+
+	for _, inputPath := range inputPaths {
+		if strings.ToLower(filepath.Ext(inputPath)) != ".png" {
+			fmt.Fprintf(stderr, "error: input must be .png files\n")
+			return 2
+		}
+	}
+	sortPathsLogical(inputPaths)
 
 	ctx := context.Background()
 
@@ -97,40 +103,45 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	defer extractor.Close()
 
-	agentText, err := extractor.ExtractTransactions(ctx, inputPath)
-	if err != nil {
-		fmt.Fprintf(stderr, "error: transaction extraction failed: %v\n", err)
-		return 1
-	}
+	allTxns := make([]transaction, 0)
+	for _, inputPath := range inputPaths {
+		agentText, extractErr := extractor.ExtractTransactions(ctx, inputPath, format)
+		if extractErr != nil {
+			fmt.Fprintf(stderr, "error: transaction extraction failed for %s: %v\n", filepath.Base(inputPath), extractErr)
+			return 1
+		}
 
-	parsed, err := parseAgentResponse(agentText)
-	if err != nil {
-		fmt.Fprintf(stderr, "error: unable to parse agent response: %v\n", err)
-		return 1
-	}
+		parsed, parseErr := parseAgentResponse(agentText)
+		if parseErr != nil {
+			fmt.Fprintf(stderr, "error: unable to parse agent response for %s: %v\n", filepath.Base(inputPath), parseErr)
+			return 1
+		}
 
-	yearHint := parsed.StatementYear
-	if yearHint == 0 {
-		yearHint = inferYearFromText(agentText)
-	}
+		yearHint := parsed.StatementYear
+		if yearHint == 0 {
+			yearHint = inferYearFromText(agentText)
+		}
 
-	txns, err := normalizeTransactions(parsed.Transactions, yearHint)
-	if err != nil {
-		fmt.Fprintf(stderr, "error: unable to normalize transactions: %v\n", err)
-		return 1
+		txns, normalizeErr := normalizeTransactions(parsed.Transactions, yearHint, format)
+		if normalizeErr != nil {
+			fmt.Fprintf(stderr, "error: unable to normalize transactions for %s: %v\n", filepath.Base(inputPath), normalizeErr)
+			return 1
+		}
+		allTxns = append(allTxns, txns...)
 	}
+	sortTransactionsByDate(allTxns)
 
 	outputPath := *outputFlag
 	if outputPath == "" {
-		outputPath = inferOutputPath(inputPath, txns)
+		outputPath = inferOutputPath(inputPaths[0], allTxns)
 	}
 
-	if err := writeTSV(outputPath, txns); err != nil {
+	if err := writeTSV(outputPath, allTxns, format); err != nil {
 		fmt.Fprintf(stderr, "error: unable to write output file: %v\n", err)
 		return 1
 	}
 
-	fmt.Fprintf(stdout, "wrote %d transactions to %s\n", len(txns), outputPath)
+	fmt.Fprintf(stdout, "wrote %d transactions to %s\n", len(allTxns), outputPath)
 	return 0
 }
 
@@ -162,21 +173,99 @@ func newExtractor(backend, model string) (transactionExtractor, error) {
 	}
 }
 
-func resolveInputPath(inputFlag string, positional []string) (string, error) {
+func normalizeFormat(s string) (string, error) {
+	format := strings.ToLower(strings.TrimSpace(s))
+	if format == "" {
+		format = "santander"
+	}
+	switch format {
+	case "santander", "sumup":
+		return format, nil
+	default:
+		return "", fmt.Errorf("unsupported format: %s", s)
+	}
+}
+
+func resolveInputPaths(inputFlag string, positional []string) ([]string, error) {
 	if inputFlag != "" {
 		if len(positional) > 0 {
-			return "", errors.New("provide either -input or a positional PNG path, not both")
+			return nil, errors.New("provide either -input or positional PNG paths, not both")
 		}
-		return inputFlag, nil
+		return []string{inputFlag}, nil
 	}
 
 	if len(positional) == 0 {
-		return "", errors.New("missing PNG file path")
+		return nil, errors.New("missing PNG file path")
 	}
-	if len(positional) > 1 {
-		return "", errors.New("too many positional arguments")
+	return append([]string(nil), positional...), nil
+}
+
+func sortPathsLogical(paths []string) {
+	sort.SliceStable(paths, func(i, j int) bool {
+		return logicalStringLess(paths[i], paths[j])
+	})
+}
+
+func logicalStringLess(a, b string) bool {
+	if a == b {
+		return false
 	}
-	return positional[0], nil
+	ra := []rune(a)
+	rb := []rune(b)
+	ia, ib := 0, 0
+	for ia < len(ra) && ib < len(rb) {
+		da := ia < len(ra) && ra[ia] >= '0' && ra[ia] <= '9'
+		db := ib < len(rb) && rb[ib] >= '0' && rb[ib] <= '9'
+		if da && db {
+			sa, sb := ia, ib
+			for ia < len(ra) && ra[ia] >= '0' && ra[ia] <= '9' {
+				ia++
+			}
+			for ib < len(rb) && rb[ib] >= '0' && rb[ib] <= '9' {
+				ib++
+			}
+			na := strings.TrimLeft(string(ra[sa:ia]), "0")
+			nb := strings.TrimLeft(string(rb[sb:ib]), "0")
+			if na == "" {
+				na = "0"
+			}
+			if nb == "" {
+				nb = "0"
+			}
+			if len(na) != len(nb) {
+				return len(na) < len(nb)
+			}
+			if na != nb {
+				return na < nb
+			}
+			continue
+		}
+		ca := strings.ToLower(string(ra[ia]))
+		cb := strings.ToLower(string(rb[ib]))
+		if ca != cb {
+			return ca < cb
+		}
+		ia++
+		ib++
+	}
+	return len(ra) < len(rb)
+}
+
+func sortTransactionsByDate(txns []transaction) {
+	sort.SliceStable(txns, func(i, j int) bool {
+		ti, errI := time.Parse("2006-01-02", txns[i].Date)
+		tj, errJ := time.Parse("2006-01-02", txns[j].Date)
+		if errI == nil && errJ == nil {
+			return ti.Before(tj)
+		}
+		if errI == nil {
+			return true
+		}
+		if errJ == nil {
+			return false
+		}
+		return txns[i].Date < txns[j].Date
+	})
 }
 
 type copilotExtractor struct {
@@ -213,7 +302,7 @@ func (e *copilotExtractor) Close() error {
 	return nil
 }
 
-func (e *copilotExtractor) ExtractTransactions(ctx context.Context, imagePath string) (string, error) {
+func (e *copilotExtractor) ExtractTransactions(ctx context.Context, imagePath, format string) (string, error) {
 	var mu sync.Mutex
 	assistantText := ""
 	done := make(chan struct{})
@@ -232,7 +321,7 @@ func (e *copilotExtractor) ExtractTransactions(ctx context.Context, imagePath st
 	defer unsubscribe()
 
 	_, err := e.session.Send(ctx, copilot.MessageOptions{
-		Prompt: buildExtractionPrompt(),
+		Prompt: buildExtractionPrompt(format),
 		Attachments: []copilot.Attachment{
 			&copilot.AttachmentFile{
 				Path:        imagePath,
@@ -284,13 +373,13 @@ func (e *geminiExtractor) Close() error {
 	return nil
 }
 
-func (e *geminiExtractor) ExtractTransactions(ctx context.Context, imagePath string) (string, error) {
+func (e *geminiExtractor) ExtractTransactions(ctx context.Context, imagePath, format string) (string, error) {
 	imgData, err := os.ReadFile(imagePath)
 	if err != nil {
 		return "", err
 	}
 
-	prompt := buildExtractionPrompt()
+	prompt := buildExtractionPrompt(format)
 
 	contents := []*genai.Content{
 		{
@@ -315,15 +404,14 @@ func (e *geminiExtractor) ExtractTransactions(ctx context.Context, imagePath str
 	return res, nil
 }
 
-func buildExtractionPrompt() string {
-	return strings.TrimSpace(`Use this extraction spec:
-
-` + skillSpec + `
-
-Use the attached PNG directly for text extraction (do not require external OCR input).
-
-Return JSON only (no markdown), with this exact schema:
-{
+func buildExtractionPrompt(format string) string {
+	rules := strings.TrimSpace(`Rules:
+- Extract only rows from "Your transactions" or "My transactions".
+- Keep one transaction per item.
+- Keep money fields as plain decimal strings, no currency symbols.
+- If amount is missing for Money In or Money Out, use an empty string.
+- Prefer statement year from context when the row date omits year.`)
+	responseSchema := strings.TrimSpace(`{
   "statement_year": 2026,
   "transactions": [
     {
@@ -334,14 +422,40 @@ Return JSON only (no markdown), with this exact schema:
       "balance": "737.26"
     }
   ]
-}
-
-Rules:
-- Extract only rows from "Your transactions" or "My transactions".
+}`)
+	if format == "sumup" {
+		rules = strings.TrimSpace(`Rules:
+- Find the transaction header row with columns: Date, Reference, Type, Amount, Description.
+- Extract all transaction rows below that header.
 - Keep one transaction per item.
+- Keep Date, Reference, Type, Amount, and Description exactly as table values.
 - Keep money fields as plain decimal strings, no currency symbols.
-- If amount is missing for Money In or Money Out, use an empty string.
 - Prefer statement year from context when the row date omits year.
+`)
+		responseSchema = strings.TrimSpace(`{
+  "statement_year": 2026,
+  "transactions": [
+    {
+      "date": "2026-05-13",
+      "reference": "Payout",
+      "type": "Transfer",
+      "amount": "-3.00",
+      "description": "Bank transfer fee"
+    }
+  ]
+}`)
+	}
+
+	return strings.TrimSpace(`Use this extraction spec:
+
+` + skillSpec + `
+
+Use the attached PNG directly for text extraction (do not require external OCR input).
+
+Return JSON only (no markdown), with this exact schema:
+` + responseSchema + `
+
+` + rules + `
 `)
 }
 
@@ -379,21 +493,28 @@ func extractJSONPayload(s string) string {
 	return strings.TrimSpace(s[start : end+1])
 }
 
-func normalizeTransactions(raw []transactionRaw, yearHint int) ([]transaction, error) {
+func normalizeTransactions(raw []map[string]any, yearHint int, format string) ([]transaction, error) {
 	txns := make([]transaction, 0, len(raw))
 	for i, r := range raw {
-		isoDate, err := normalizeDate(stringify(r.Date), yearHint)
+		isoDate, err := normalizeDate(stringify(r["date"]), yearHint)
 		if err != nil {
-			return nil, fmt.Errorf("row %d: invalid date %q: %w", i+1, stringify(r.Date), err)
+			return nil, fmt.Errorf("row %d: invalid date %q: %w", i+1, stringify(r["date"]), err)
 		}
 
-		txns = append(txns, transaction{
+		tx := transaction{
 			Date:        isoDate,
-			Description: cleanDescription(stringify(r.Description)),
-			MoneyIn:     normalizeAmount(stringify(r.MoneyIn)),
-			MoneyOut:    normalizeAmount(stringify(r.MoneyOut)),
-			Balance:     normalizeAmount(stringify(r.Balance)),
-		})
+			Description: cleanDescription(stringify(r["description"])),
+		}
+		if format == "sumup" {
+			tx.Reference = cleanDescription(stringify(r["reference"]))
+			tx.Type = cleanDescription(stringify(r["type"]))
+			tx.Amount = normalizeAmount(stringify(r["amount"]))
+		} else {
+			tx.MoneyIn = normalizeAmount(stringify(r["money_in"]))
+			tx.MoneyOut = normalizeAmount(stringify(r["money_out"]))
+			tx.Balance = normalizeAmount(stringify(r["balance"]))
+		}
+		txns = append(txns, tx)
 	}
 	return txns, nil
 }
@@ -521,7 +642,7 @@ func inferOutputPath(inputPath string, txns []transaction) string {
 	return filepath.Join(filepath.Dir(inputPath), fmt.Sprintf("%s-%s.tsv", base, month))
 }
 
-func writeTSV(path string, txns []transaction) error {
+func writeTSV(path string, txns []transaction, format string) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -532,13 +653,23 @@ func writeTSV(path string, txns []transaction) error {
 	writer.Comma = '|'
 	defer writer.Flush()
 
-	if err := writer.Write([]string{"Date", "Description", "Money In", "Money Out", "Balance"}); err != nil {
-		return err
-	}
-
-	for _, tx := range txns {
-		if err := writer.Write([]string{tx.Date, tx.Description, tx.MoneyIn, tx.MoneyOut, tx.Balance}); err != nil {
+	if format == "sumup" {
+		if err := writer.Write([]string{"Date", "Reference", "Type", "Amount", "Description"}); err != nil {
 			return err
+		}
+		for _, tx := range txns {
+			if err := writer.Write([]string{tx.Date, tx.Reference, tx.Type, tx.Amount, tx.Description}); err != nil {
+				return err
+			}
+		}
+	} else {
+		if err := writer.Write([]string{"Date", "Description", "Money In", "Money Out", "Balance"}); err != nil {
+			return err
+		}
+		for _, tx := range txns {
+			if err := writer.Write([]string{tx.Date, tx.Description, tx.MoneyIn, tx.MoneyOut, tx.Balance}); err != nil {
+				return err
+			}
 		}
 	}
 
