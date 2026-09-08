@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -162,6 +163,65 @@ func TestRunListEmptyConfig(t *testing.T) {
 	expected := "Available queries:\n"
 	if stdout.String() != expected {
 		t.Fatalf("expected output %q, got %q", expected, stdout.String())
+	}
+}
+
+func TestRunListJSON(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	tempDir := t.TempDir()
+	queryConfigPath := filepath.Join(tempDir, "queries.json")
+	if err := os.WriteFile(queryConfigPath, []byte(`{
+		"query-b":{"sql":"SELECT 2"},
+		"query-a":{"sql":"SELECT 1"}
+	}`), 0o644); err != nil {
+		t.Fatalf("write query config: %v", err)
+	}
+	t.Setenv("GOQUERY_QUERIES_FILE", queryConfigPath)
+
+	exitCode := Run([]string{"--json", "list"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d. stderr: %s", exitCode, stderr.String())
+	}
+
+	var got []string
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("expected valid JSON output, got %q (%v)", stdout.String(), err)
+	}
+	expected := []string{"query-a", "query-b"}
+	if len(got) != len(expected) {
+		t.Fatalf("expected %d names, got %d", len(expected), len(got))
+	}
+	for i := range expected {
+		if got[i] != expected[i] {
+			t.Fatalf("got[%d] = %q, want %q", i, got[i], expected[i])
+		}
+	}
+}
+
+func TestRunListJSONEmptyConfig(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	tempDir := t.TempDir()
+	queryConfigPath := filepath.Join(tempDir, "queries.json")
+	if err := os.WriteFile(queryConfigPath, []byte(`{}`), 0o644); err != nil {
+		t.Fatalf("write query config: %v", err)
+	}
+	t.Setenv("GOQUERY_QUERIES_FILE", queryConfigPath)
+
+	exitCode := Run([]string{"--json", "list"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d. stderr: %s", exitCode, stderr.String())
+	}
+
+	var got []string
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("expected valid JSON output, got %q (%v)", stdout.String(), err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected empty list, got %v", got)
 	}
 }
 
