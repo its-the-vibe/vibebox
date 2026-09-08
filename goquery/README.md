@@ -25,12 +25,17 @@ export GOOGLE_PROJECT_ID=my-gcp-project
 
 # list available queries
 ./bin/goquery list
+./bin/goquery --json list
 
 # inspect table schema
 ./bin/goquery schema my_dataset my_table
+./bin/goquery --json schema my_dataset my_table
 
 # override project for schema inspection
 ./bin/goquery schema --project my-gcp-project my_dataset my_table
+
+# run query with JSON output
+./bin/goquery --json query monthly-balance-extremes
 ```
 
 Use a custom query config file at runtime:

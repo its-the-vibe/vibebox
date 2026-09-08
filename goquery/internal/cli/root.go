@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -39,6 +40,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 }
 
 func newRootCommand(stdout, stderr io.Writer) *cobra.Command {
+	var jsonOutput bool
+
 	rootCmd := &cobra.Command{
 		Use:           "goquery",
 		Short:         "Run predefined BigQuery SQL queries",
@@ -50,13 +53,14 @@ func newRootCommand(stdout, stderr io.Writer) *cobra.Command {
 	}
 	rootCmd.SetOut(stdout)
 	rootCmd.SetErr(stderr)
-	rootCmd.AddCommand(newQueryCommand())
-	rootCmd.AddCommand(newSchemaCommand())
-	rootCmd.AddCommand(newListCommand())
+	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output results as JSON")
+	rootCmd.AddCommand(newQueryCommand(&jsonOutput))
+	rootCmd.AddCommand(newSchemaCommand(&jsonOutput))
+	rootCmd.AddCommand(newListCommand(&jsonOutput))
 	return rootCmd
 }
 
-func newListCommand() *cobra.Command {
+func newListCommand(jsonOutput *bool) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List all available queries",
@@ -74,6 +78,9 @@ func newListCommand() *cobra.Command {
 			sort.Strings(names)
 
 			out := cmd.OutOrStdout()
+			if *jsonOutput {
+				return writeJSON(out, names)
+			}
 			fmt.Fprintln(out, "Available queries:")
 			for _, name := range names {
 				fmt.Fprintf(out, "  - %s\n", name)
@@ -84,7 +91,7 @@ func newListCommand() *cobra.Command {
 	}
 }
 
-func newQueryCommand() *cobra.Command {
+func newQueryCommand(jsonOutput *bool) *cobra.Command {
 	return &cobra.Command{
 		Use:   "query <query-name>",
 		Short: "Run a predefined BigQuery query",
@@ -124,12 +131,12 @@ func newQueryCommand() *cobra.Command {
 				return err
 			}
 
-			return printRows(cmd.OutOrStdout(), iter)
+			return printRows(cmd.OutOrStdout(), iter, *jsonOutput)
 		},
 	}
 }
 
-func newSchemaCommand() *cobra.Command {
+func newSchemaCommand(jsonOutput *bool) *cobra.Command {
 	var projectID string
 
 	cmd := &cobra.Command{
@@ -197,7 +204,7 @@ func newSchemaCommand() *cobra.Command {
 				return err
 			}
 
-			return printSchemaRows(cmd.OutOrStdout(), iter, dataset, table)
+			return printSchemaRows(cmd.OutOrStdout(), iter, dataset, table, *jsonOutput)
 		},
 	}
 
@@ -219,10 +226,13 @@ func resolveQueryConfigPath() string {
 	return "queries.json"
 }
 
-func printRows(out io.Writer, iter *bigquery.RowIterator) error {
+func printRows(out io.Writer, iter *bigquery.RowIterator, jsonOutput bool) error {
 	var firstRow []bigquery.Value
 	err := iter.Next(&firstRow)
 	if errors.Is(err, iterator.Done) {
+		if jsonOutput {
+			return writeJSON(out, []map[string]any{})
+		}
 		return nil
 	}
 	if err != nil {
@@ -263,6 +273,22 @@ func printRows(out io.Writer, iter *bigquery.RowIterator) error {
 	headers := make([]string, len(schema))
 	for i, field := range schema {
 		headers[i] = field.Name
+	}
+
+	if jsonOutput {
+		jsonRows := make([]map[string]any, len(formattedRows))
+		for i, row := range formattedRows {
+			jsonRow := make(map[string]any, len(row))
+			for j, cell := range row {
+				if j < len(headers) {
+					jsonRow[headers[j]] = cell
+				} else {
+					jsonRow[fmt.Sprintf("col_%d", j+1)] = cell
+				}
+			}
+			jsonRows[i] = jsonRow
+		}
+		return writeJSON(out, jsonRows)
 	}
 
 	if len(headers) == 0 {
@@ -376,7 +402,7 @@ type schemaRow struct {
 	Description string
 }
 
-func printSchemaRows(out io.Writer, iter *bigquery.RowIterator, dataset, table string) error {
+func printSchemaRows(out io.Writer, iter *bigquery.RowIterator, dataset, table string, jsonOutput bool) error {
 	// Collect all rows so we can compute column widths before printing.
 	var rows []schemaRow
 	for {
@@ -393,6 +419,19 @@ func printSchemaRows(out io.Writer, iter *bigquery.RowIterator, dataset, table s
 
 	if len(rows) == 0 {
 		return fmt.Errorf("no schema information found for table %q in dataset %q", table, dataset)
+	}
+
+	if jsonOutput {
+		jsonRows := make([]map[string]string, len(rows))
+		for i, row := range rows {
+			jsonRows[i] = map[string]string{
+				"name":        formatCell(row.Name),
+				"type":        formatCell(row.Type),
+				"mode":        formatCell(row.Mode),
+				"description": formatCell(row.Description),
+			}
+		}
+		return writeJSON(out, jsonRows)
 	}
 
 	headers := []string{"Name", "Type", "Mode", "Description"}
@@ -423,6 +462,12 @@ func printSchemaRows(out io.Writer, iter *bigquery.RowIterator, dataset, table s
 	}
 
 	return nil
+}
+
+func writeJSON(out io.Writer, v any) error {
+	encoder := json.NewEncoder(out)
+	encoder.SetEscapeHTML(false)
+	return encoder.Encode(v)
 }
 
 func isValidProjectID(projectID string) bool {
