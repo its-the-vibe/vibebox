@@ -21,7 +21,7 @@ fi
 
 # 3. Generate override file using python yq (passing parameter safely via --arg)
 yq -y --arg img "$IMAGE_NAME" \
-  '.services |= with_entries(.value = {"image": $arg})' \
+  '.services |= with_entries(.value = {"image": $img})' \
   "$INPUT_FILE" > "$OUTPUT_FILE"
 
 # 4. Verification step
