@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        project: [stmtdate, stmtpng2tsv, goquery]
+        project: [stmtdate, stmtpng2tsv, goquery, docker-override]
     steps:
       - uses: actions/checkout@v4
 
