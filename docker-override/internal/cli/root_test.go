@@ -24,6 +24,12 @@ func TestRunNoArgsShowsHelp(t *testing.T) {
 	if !strings.Contains(stdout.String(), "create      Create a Docker Compose override file") {
 		t.Fatalf("expected create command in help output, got %q", stdout.String())
 	}
+	if !strings.Contains(stdout.String(), "view        View the image tag of the first service") {
+		t.Fatalf("expected view command in help output, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "delete      Delete a Docker Compose override file") {
+		t.Fatalf("expected delete command in help output, got %q", stdout.String())
+	}
 	if !strings.Contains(stdout.String(), "ghcr.io/its-the-vibe/app:latest") {
 		t.Fatalf("expected usage example in help output, got %q", stdout.String())
 	}
@@ -107,6 +113,249 @@ func TestRunCreateCustomPaths(t *testing.T) {
 
 	output := readComposeFile(t, outputPath)
 	assertAllServicesUseImage(t, output, "ghcr.io/example/custom:1.2.3", []string{"api", "jobs"})
+}
+
+func TestRunViewDefaultsToCurrentAndFallsBackToBase(t *testing.T) {
+	tempDir := t.TempDir()
+	writeComposeFile(t, filepath.Join(tempDir, defaultComposePath), "services:\n  web:\n    image: ghcr.io/example/base:1.0.0\n")
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("chdir temp dir: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	}()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"view"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d. stderr: %s", exitCode, stderr.String())
+	}
+	if strings.TrimSpace(stdout.String()) != "ghcr.io/example/base:1.0.0" {
+		t.Fatalf("expected base image output, got %q", stdout.String())
+	}
+}
+
+func TestRunViewDefaultsToCurrentAndUsesOverrideWhenPresent(t *testing.T) {
+	tempDir := t.TempDir()
+	writeComposeFile(t, filepath.Join(tempDir, defaultComposePath), "services:\n  web:\n    image: ghcr.io/example/base:1.0.0\n")
+	writeComposeFile(t, filepath.Join(tempDir, defaultOverridePath), "services:\n  web:\n    image: ghcr.io/example/override:2.0.0\n")
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("chdir temp dir: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	}()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"view"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d. stderr: %s", exitCode, stderr.String())
+	}
+	if strings.TrimSpace(stdout.String()) != "ghcr.io/example/override:2.0.0" {
+		t.Fatalf("expected override image output, got %q", stdout.String())
+	}
+}
+
+func TestRunViewBaseAndOverrideFlags(t *testing.T) {
+	tempDir := t.TempDir()
+	writeComposeFile(t, filepath.Join(tempDir, defaultComposePath), "services:\n  web:\n    image: ghcr.io/example/base:1.0.0\n")
+	writeComposeFile(t, filepath.Join(tempDir, defaultOverridePath), "services:\n  web:\n    image: ghcr.io/example/override:2.0.0\n")
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("chdir temp dir: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	}()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"view", "--base"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d. stderr: %s", exitCode, stderr.String())
+	}
+	if strings.TrimSpace(stdout.String()) != "ghcr.io/example/base:1.0.0" {
+		t.Fatalf("expected base image output, got %q", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exitCode = Run([]string{"view", "--override"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d. stderr: %s", exitCode, stderr.String())
+	}
+	if strings.TrimSpace(stdout.String()) != "ghcr.io/example/override:2.0.0" {
+		t.Fatalf("expected override image output, got %q", stdout.String())
+	}
+}
+
+func TestRunViewMutuallyExclusiveFlags(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"view", "--base", "--override"}, &stdout, &stderr)
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "flags --base, --override, and --current are mutually exclusive") {
+		t.Fatalf("expected mutual-exclusion error, got %q", stderr.String())
+	}
+}
+
+func TestRunViewUsesDeterministicServiceSelection(t *testing.T) {
+	tempDir := t.TempDir()
+	writeComposeFile(t, filepath.Join(tempDir, defaultComposePath), "services:\n  web:\n    image: ghcr.io/example/web:2.0.0\n  api:\n    image: ghcr.io/example/api:1.0.0\n")
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("chdir temp dir: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	}()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"view", "--base"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d. stderr: %s", exitCode, stderr.String())
+	}
+	if strings.TrimSpace(stdout.String()) != "ghcr.io/example/api:1.0.0" {
+		t.Fatalf("expected deterministic first image output, got %q", stdout.String())
+	}
+}
+
+func TestRunViewRejectsNonScalarImageValue(t *testing.T) {
+	tempDir := t.TempDir()
+	writeComposeFile(t, filepath.Join(tempDir, defaultComposePath), "services:\n  web:\n    image:\n      repository: ghcr.io/example/web\n")
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("chdir temp dir: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	}()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"view", "--base"}, &stdout, &stderr)
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "image field in first service of \"docker-compose.yml\" must be a scalar value") {
+		t.Fatalf("expected non-scalar image error, got %q", stderr.String())
+	}
+}
+
+func TestRunDeleteRemovesOverrideFile(t *testing.T) {
+	tempDir := t.TempDir()
+	overridePath := filepath.Join(tempDir, defaultOverridePath)
+	writeComposeFile(t, overridePath, "services:\n  web:\n    image: ghcr.io/example/override:2.0.0\n")
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("chdir temp dir: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	}()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"delete"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d. stderr: %s", exitCode, stderr.String())
+	}
+	if strings.TrimSpace(stdout.String()) != "Deleted \"docker-compose.override.yml\"" {
+		t.Fatalf("expected delete success output, got %q", stdout.String())
+	}
+	if _, err := os.Stat(overridePath); !os.IsNotExist(err) {
+		t.Fatalf("expected override file to be deleted, stat err: %v", err)
+	}
+}
+
+func TestRunDeleteHandlesMissingOverrideGracefully(t *testing.T) {
+	tempDir := t.TempDir()
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("chdir temp dir: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	}()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"delete"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d. stderr: %s", exitCode, stderr.String())
+	}
+	if strings.TrimSpace(stdout.String()) != "No override file found at \"docker-compose.override.yml\"" {
+		t.Fatalf("expected missing-file output, got %q", stdout.String())
+	}
+}
+
+func TestRunDeleteSupportsCustomPath(t *testing.T) {
+	tempDir := t.TempDir()
+	customPath := filepath.Join(tempDir, "custom.override.yml")
+	writeComposeFile(t, customPath, "services:\n  web:\n    image: ghcr.io/example/override:2.0.0\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"delete", customPath}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d. stderr: %s", exitCode, stderr.String())
+	}
+	if strings.TrimSpace(stdout.String()) != "Deleted \""+customPath+"\"" {
+		t.Fatalf("expected delete success output, got %q", stdout.String())
+	}
+	if _, err := os.Stat(customPath); !os.IsNotExist(err) {
+		t.Fatalf("expected custom override file to be deleted, stat err: %v", err)
+	}
 }
 
 func writeComposeFile(t *testing.T, path, content string) {
