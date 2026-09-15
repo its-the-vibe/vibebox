@@ -268,13 +268,16 @@ func readFirstServiceImage(inputFile string) (string, error) {
 	if servicesNode.Kind != yaml.MappingNode {
 		return "", fmt.Errorf("services in %q must be a mapping", inputFile)
 	}
-	if len(servicesNode.Content) == 0 {
-		return "", fmt.Errorf("services in %q must not be empty", inputFile)
+	if len(servicesNode.Content) < 2 || len(servicesNode.Content)%2 != 0 {
+		return "", fmt.Errorf("services in %q must contain at least one valid service mapping", inputFile)
 	}
 
 	firstService := servicesNode.Content[1]
 	if firstService.Kind != yaml.MappingNode {
 		return "", fmt.Errorf("first service in %q must be a mapping", inputFile)
+	}
+	if len(firstService.Content)%2 != 0 {
+		return "", fmt.Errorf("first service in %q must be a valid mapping", inputFile)
 	}
 
 	for i := 0; i < len(firstService.Content); i += 2 {

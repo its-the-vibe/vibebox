@@ -211,6 +211,19 @@ func TestRunViewBaseAndOverrideFlags(t *testing.T) {
 	}
 }
 
+func TestRunViewMutuallyExclusiveFlags(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"view", "--base", "--override"}, &stdout, &stderr)
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "flags --base, --override, and --current are mutually exclusive") {
+		t.Fatalf("expected mutual-exclusion error, got %q", stderr.String())
+	}
+}
+
 func TestRunDeleteRemovesOverrideFile(t *testing.T) {
 	tempDir := t.TempDir()
 	overridePath := filepath.Join(tempDir, defaultOverridePath)
@@ -267,6 +280,25 @@ func TestRunDeleteHandlesMissingOverrideGracefully(t *testing.T) {
 	}
 	if strings.TrimSpace(stdout.String()) != "No override file found at \"docker-compose.override.yml\"" {
 		t.Fatalf("expected missing-file output, got %q", stdout.String())
+	}
+}
+
+func TestRunDeleteSupportsCustomPath(t *testing.T) {
+	tempDir := t.TempDir()
+	customPath := filepath.Join(tempDir, "custom.override.yml")
+	writeComposeFile(t, customPath, "services:\n  web:\n    image: ghcr.io/example/override:2.0.0\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"delete", customPath}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d. stderr: %s", exitCode, stderr.String())
+	}
+	if strings.TrimSpace(stdout.String()) != "Deleted \""+customPath+"\"" {
+		t.Fatalf("expected delete success output, got %q", stdout.String())
+	}
+	if _, err := os.Stat(customPath); !os.IsNotExist(err) {
+		t.Fatalf("expected custom override file to be deleted, stat err: %v", err)
 	}
 }
 
