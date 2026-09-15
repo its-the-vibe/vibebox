@@ -224,6 +224,62 @@ func TestRunViewMutuallyExclusiveFlags(t *testing.T) {
 	}
 }
 
+func TestRunViewUsesDeterministicServiceSelection(t *testing.T) {
+	tempDir := t.TempDir()
+	writeComposeFile(t, filepath.Join(tempDir, defaultComposePath), "services:\n  web:\n    image: ghcr.io/example/web:2.0.0\n  api:\n    image: ghcr.io/example/api:1.0.0\n")
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("chdir temp dir: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	}()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"view", "--base"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d. stderr: %s", exitCode, stderr.String())
+	}
+	if strings.TrimSpace(stdout.String()) != "ghcr.io/example/api:1.0.0" {
+		t.Fatalf("expected deterministic first image output, got %q", stdout.String())
+	}
+}
+
+func TestRunViewRejectsNonScalarImageValue(t *testing.T) {
+	tempDir := t.TempDir()
+	writeComposeFile(t, filepath.Join(tempDir, defaultComposePath), "services:\n  web:\n    image:\n      repository: ghcr.io/example/web\n")
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("chdir temp dir: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	}()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"view", "--base"}, &stdout, &stderr)
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "image field in first service of \"docker-compose.yml\" must be a scalar value") {
+		t.Fatalf("expected non-scalar image error, got %q", stderr.String())
+	}
+}
+
 func TestRunDeleteRemovesOverrideFile(t *testing.T) {
 	tempDir := t.TempDir()
 	overridePath := filepath.Join(tempDir, defaultOverridePath)

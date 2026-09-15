@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 
 	"github.com/spf13/cobra"
 	"go.yaml.in/yaml/v3"
@@ -272,7 +273,23 @@ func readFirstServiceImage(inputFile string) (string, error) {
 		return "", fmt.Errorf("services in %q must contain at least one valid service mapping", inputFile)
 	}
 
-	firstService := servicesNode.Content[1]
+	servicesByName := make(map[string]*yaml.Node, len(servicesNode.Content)/2)
+	for i := 0; i < len(servicesNode.Content); i += 2 {
+		keyNode := servicesNode.Content[i]
+		valueNode := servicesNode.Content[i+1]
+		if keyNode.Kind != yaml.ScalarNode {
+			return "", fmt.Errorf("service names in %q must be scalar values", inputFile)
+		}
+		servicesByName[keyNode.Value] = valueNode
+	}
+
+	serviceNames := make([]string, 0, len(servicesByName))
+	for name := range servicesByName {
+		serviceNames = append(serviceNames, name)
+	}
+	sort.Strings(serviceNames)
+
+	firstService := servicesByName[serviceNames[0]]
 	if firstService.Kind != yaml.MappingNode {
 		return "", fmt.Errorf("first service in %q must be a mapping", inputFile)
 	}
@@ -282,6 +299,9 @@ func readFirstServiceImage(inputFile string) (string, error) {
 
 	for i := 0; i < len(firstService.Content); i += 2 {
 		if firstService.Content[i].Value == "image" {
+			if firstService.Content[i+1].Kind != yaml.ScalarNode {
+				return "", fmt.Errorf("image field in first service of %q must be a scalar value", inputFile)
+			}
 			return firstService.Content[i+1].Value, nil
 		}
 	}
