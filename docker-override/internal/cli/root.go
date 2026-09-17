@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"go.yaml.in/yaml/v3"
@@ -35,7 +36,9 @@ func newRootCommand(stdout, stderr io.Writer) *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Example: "  docker-override create ghcr.io/its-the-vibe/app:latest\n" +
-			"  docker-override create ghcr.io/its-the-vibe/app:latest compose.yml compose.override.yml",
+			"  docker-override create ghcr.io/its-the-vibe/app:latest compose.yml compose.override.yml\n" +
+			"  docker-override create --override-tag feature\n" +
+			"  docker-override create --override-tag feature compose.yml compose.override.yml",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
@@ -49,13 +52,54 @@ func newRootCommand(stdout, stderr io.Writer) *cobra.Command {
 }
 
 func newCreateCommand() *cobra.Command {
-	return &cobra.Command{
+	var overrideTag string
+
+	cmd := &cobra.Command{
 		Use:   "create <img> [docker-compose.yml] [docker-compose.override.yml]",
 		Short: "Create a Docker Compose override file",
 		Long:  "Create a Docker Compose override file by replacing every service definition with a shared image.",
 		Example: "  docker-override create ghcr.io/its-the-vibe/app:latest\n" +
-			"  docker-override create ghcr.io/its-the-vibe/app:latest compose.yml compose.override.yml",
+			"  docker-override create ghcr.io/its-the-vibe/app:latest compose.yml compose.override.yml\n" +
+			"  docker-override create --override-tag feature\n" +
+			"  docker-override create --override-tag feature compose.yml compose.override.yml",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("override-tag") {
+				tag := strings.TrimSpace(overrideTag)
+				tag = strings.TrimPrefix(tag, ":")
+				if tag == "" {
+					return errors.New("override tag cannot be empty")
+				}
+				if len(args) > 2 {
+					return fmt.Errorf("accepts between 0 and 2 arg(s), received %d", len(args))
+				}
+
+				inputFile := defaultComposePath
+				if len(args) >= 1 {
+					inputFile = args[0]
+				}
+				outputFile := defaultOverridePath
+				if len(args) == 2 {
+					outputFile = args[1]
+				}
+
+				baseImage, err := readFirstServiceImage(inputFile)
+				if err != nil {
+					return err
+				}
+
+				imageName, err := replaceImageTag(baseImage, tag)
+				if err != nil {
+					return err
+				}
+
+				if err := createOverrideFile(imageName, inputFile, outputFile); err != nil {
+					return err
+				}
+
+				fmt.Fprintf(cmd.OutOrStdout(), "Successfully generated %q with image: %s\n", outputFile, imageName)
+				return nil
+			}
+
 			if len(args) == 0 {
 				return cmd.Help()
 			}
@@ -81,6 +125,36 @@ func newCreateCommand() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVar(&overrideTag, "override-tag", "", "Replace the image tag from the base compose file")
+	return cmd
+}
+
+func replaceImageTag(baseImage, tag string) (string, error) {
+	tag = strings.TrimSpace(tag)
+	tag = strings.TrimPrefix(tag, ":")
+	if tag == "" {
+		return "", errors.New("override tag cannot be empty")
+	}
+
+	imageWithoutDigest := strings.TrimSpace(baseImage)
+	if atIdx := strings.Index(imageWithoutDigest, "@"); atIdx != -1 {
+		imageWithoutDigest = imageWithoutDigest[:atIdx]
+	}
+
+	lastSlash := strings.LastIndex(imageWithoutDigest, "/")
+	lastColon := strings.LastIndex(imageWithoutDigest, ":")
+
+	if lastColon == -1 || lastColon < lastSlash {
+		return "", fmt.Errorf("image %q does not contain a tag to replace", baseImage)
+	}
+
+	imageName := imageWithoutDigest[:lastColon]
+	if imageName == "" || strings.HasSuffix(imageName, "/") {
+		return "", fmt.Errorf("image %q is invalid", baseImage)
+	}
+
+	return imageName + ":" + tag, nil
 }
 
 func newViewCommand() *cobra.Command {
