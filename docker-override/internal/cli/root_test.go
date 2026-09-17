@@ -398,3 +398,245 @@ func assertAllServicesUseImage(t *testing.T, compose map[string]any, image strin
 		}
 	}
 }
+
+func TestReplaceImageTag(t *testing.T) {
+	tests := []struct {
+		name      string
+		baseImage string
+		tag       string
+		want      string
+		wantErr   bool
+	}{
+		{
+			name:      "Docker Hub official image",
+			baseImage: "postgres:15",
+			tag:       "16-alpine",
+			want:      "postgres:16-alpine",
+		},
+		{
+			name:      "Docker Hub user repo",
+			baseImage: "myorg/webapp:v1.0",
+			tag:       "v2.0",
+			want:      "myorg/webapp:v2.0",
+		},
+		{
+			name:      "GHCR registry",
+			baseImage: "ghcr.io/its-the-vibe/querylab:latest",
+			tag:       "feature",
+			want:      "ghcr.io/its-the-vibe/querylab:feature",
+		},
+		{
+			name:      "Private registry with port",
+			baseImage: "localhost:5000/app:dev",
+			tag:       "prod",
+			want:      "localhost:5000/app:prod",
+		},
+		{
+			name:      "Private registry with port and multi-level namespace",
+			baseImage: "registry.corp.net:8443/team/service/worker:1.2.3",
+			tag:       "2.0.0",
+			want:      "registry.corp.net:8443/team/service/worker:2.0.0",
+		},
+		{
+			name:      "Tag with leading colon",
+			baseImage: "ghcr.io/its-the-vibe/app:old",
+			tag:       ":new",
+			want:      "ghcr.io/its-the-vibe/app:new",
+		},
+		{
+			name:      "Image with tag and digest",
+			baseImage: "ghcr.io/its-the-vibe/app:latest@sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+			tag:       "feature",
+			want:      "ghcr.io/its-the-vibe/app:feature",
+		},
+		{
+			name:      "Image without tag fails",
+			baseImage: "postgres",
+			tag:       "16",
+			wantErr:   true,
+		},
+		{
+			name:      "Image with registry port but without tag fails",
+			baseImage: "localhost:5000/app",
+			tag:       "dev",
+			wantErr:   true,
+		},
+		{
+			name:      "Image with digest only fails",
+			baseImage: "ghcr.io/its-the-vibe/app@sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+			tag:       "feature",
+			wantErr:   true,
+		},
+		{
+			name:      "Empty tag fails",
+			baseImage: "postgres:15",
+			tag:       "",
+			wantErr:   true,
+		},
+		{
+			name:      "Whitespace tag fails",
+			baseImage: "postgres:15",
+			tag:       "   ",
+			wantErr:   true,
+		},
+		{
+			name:      "Invalid image without repo name",
+			baseImage: ":latest",
+			tag:       "feature",
+			wantErr:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := replaceImageTag(tt.baseImage, tt.tag)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("replaceImageTag(%q, %q) error = %v, wantErr %v", tt.baseImage, tt.tag, err, tt.wantErr)
+			}
+			if !tt.wantErr && got != tt.want {
+				t.Fatalf("replaceImageTag(%q, %q) = %q, want %q", tt.baseImage, tt.tag, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRunCreateWithOverrideTagDefaultPaths(t *testing.T) {
+	tempDir := t.TempDir()
+	writeComposeFile(t, filepath.Join(tempDir, defaultComposePath), "version: '3.9'\nservices:\n  web:\n    image: ghcr.io/its-the-vibe/querylab:latest\n  worker:\n    image: old:1.0.0\nnetworks:\n  default: {}\n")
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("chdir temp dir: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	}()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"create", "--override-tag", "feature"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d. stderr: %s", exitCode, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Successfully generated \"docker-compose.override.yml\" with image: ghcr.io/its-the-vibe/querylab:feature") {
+		t.Fatalf("expected success output, got %q", stdout.String())
+	}
+
+	output := readComposeFile(t, filepath.Join(tempDir, defaultOverridePath))
+	if output["version"] != "3.9" {
+		t.Fatalf("expected version to be preserved, got %#v", output["version"])
+	}
+	assertAllServicesUseImage(t, output, "ghcr.io/its-the-vibe/querylab:feature", []string{"web", "worker"})
+	if _, ok := output["networks"]; !ok {
+		t.Fatalf("expected non-service top-level keys to be preserved, got %#v", output)
+	}
+}
+
+func TestRunCreateWithOverrideTagCustomPaths(t *testing.T) {
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "custom.yml")
+	outputPath := filepath.Join(tempDir, "custom.override.yml")
+	writeComposeFile(t, inputPath, "services:\n  api:\n    image: localhost:5000/myteam/myapp:v1\n  worker:\n    image: placeholder:old\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"create", "--override-tag", "v2", inputPath, outputPath}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d. stderr: %s", exitCode, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Successfully generated \""+outputPath+"\" with image: localhost:5000/myteam/myapp:v2") {
+		t.Fatalf("expected success output, got %q", stdout.String())
+	}
+
+	output := readComposeFile(t, outputPath)
+	assertAllServicesUseImage(t, output, "localhost:5000/myteam/myapp:v2", []string{"api", "worker"})
+}
+
+func TestRunCreateWithOverrideTagCustomInputDefaultOutput(t *testing.T) {
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "custom.yml")
+	writeComposeFile(t, inputPath, "services:\n  api:\n    image: redis:6.2\n")
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("chdir temp dir: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	}()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"create", "--override-tag", "7.0-alpine", inputPath}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d. stderr: %s", exitCode, stderr.String())
+	}
+
+	output := readComposeFile(t, filepath.Join(tempDir, defaultOverridePath))
+	assertAllServicesUseImage(t, output, "redis:7.0-alpine", []string{"api"})
+}
+
+func TestRunCreateWithOverrideTagMissingInputFile(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"create", "--override-tag", "feature", "nonexistent.yml"}, &stdout, &stderr)
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "Error: input file \"nonexistent.yml\" not found") {
+		t.Fatalf("expected missing input error, got %q", stderr.String())
+	}
+}
+
+func TestRunCreateWithOverrideTagBaseImageMissingTag(t *testing.T) {
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "compose.yml")
+	writeComposeFile(t, inputPath, "services:\n  api:\n    image: postgres\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Run([]string{"create", "--override-tag", "16", inputPath}, &stdout, &stderr)
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "does not contain a tag to replace") {
+		t.Fatalf("expected missing tag error, got %q", stderr.String())
+	}
+}
+
+func TestRunCreateWithOverrideTagEmptyTag(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"create", "--override-tag", ""}, &stdout, &stderr)
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "override tag cannot be empty") {
+		t.Fatalf("expected empty tag error, got %q", stderr.String())
+	}
+}
+
+func TestRunCreateWithOverrideTagTooManyArgs(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Run([]string{"create", "--override-tag", "feature", "arg1", "arg2", "arg3"}, &stdout, &stderr)
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "accepts between 0 and 2 arg(s), received 3") {
+		t.Fatalf("expected arg count error, got %q", stderr.String())
+	}
+}
