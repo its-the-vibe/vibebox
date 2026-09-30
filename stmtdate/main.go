@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -90,7 +91,8 @@ func creationDateFromPDF(filePath string) (string, error) {
 	}
 	defer f.Close()
 
-	info, err := api.PDFInfo(f, filepath.Base(filePath), nil, false, nil)
+	ctx := context.Background()
+	info, err := api.PDFInfo(ctx, f, filepath.Base(filePath), nil, false, nil)
 	if err != nil {
 		return "", err
 	}
