@@ -1,6 +1,6 @@
 module github.com/its-the-vibe/vibebox/stmtpng2tsv
 
-go 1.27.1
+go 1.27.2
 
 require (
 	github.com/github/copilot-sdk/go v1.0.17
