@@ -152,7 +152,7 @@ func newVersionsCommand(runner commandRunner) *cobra.Command {
 				return fmt.Errorf("secret %q has no active versions", args[0])
 			}
 			oldest := versions[0]
-			if err := runner.Run([]string{"secrets", "versions", "destroy", oldest.number, "--secret", args[0]}, nil, cmd.OutOrStdout(), cmd.ErrOrStderr()); err != nil {
+			if err := runner.Run([]string{"secrets", "versions", "destroy", oldest.number, "--quiet", "--secret", args[0]}, nil, cmd.OutOrStdout(), cmd.ErrOrStderr()); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Destroyed version %s of secret %q\n", oldest.number, args[0])
