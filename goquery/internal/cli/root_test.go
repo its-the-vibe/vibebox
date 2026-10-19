@@ -429,3 +429,56 @@ func TestRunQueryMissingRequiredParameter(t *testing.T) {
 		t.Fatalf("unexpected result %d %q", code, stderr.String())
 	}
 }
+
+const verboseListConfig = `{
+	"plain":{"sql":"SELECT 1"},
+	"with-params":{"sql":"SELECT @user_id","parameters":[{"name":"user_id","type":"INT64"},{"name":"start_date","type":"DATE"}]}
+}`
+
+func TestRunListVerbose(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	p := filepath.Join(t.TempDir(), "queries.json")
+	if err := os.WriteFile(p, []byte(verboseListConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOQUERY_QUERIES_FILE", p)
+
+	if code := Run([]string{"list", "--verbose"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+	expected := "Available queries:\n  - plain\n  - with-params\n    Parameters: user_id (INT64), start_date (DATE)\n"
+	if stdout.String() != expected {
+		t.Fatalf("expected %q, got %q", expected, stdout.String())
+	}
+}
+
+func TestRunListVerboseJSON(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	p := filepath.Join(t.TempDir(), "queries.json")
+	if err := os.WriteFile(p, []byte(verboseListConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOQUERY_QUERIES_FILE", p)
+
+	if code := Run([]string{"--json", "list", "-v"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+	var got []struct {
+		Name       string `json:"name"`
+		Parameters []struct {
+			Name string `json:"name"`
+			Type string `json:"type"`
+		} `json:"parameters"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON %q: %v", stdout.String(), err)
+	}
+	if len(got) != 2 || got[0].Name != "plain" || len(got[0].Parameters) != 0 {
+		t.Fatalf("unexpected: %+v", got)
+	}
+	if len(got[1].Parameters) != 2 || got[1].Parameters[0].Type != "INT64" || got[1].Parameters[1].Name != "start_date" {
+		t.Fatalf("unexpected params: %+v", got[1])
+	}
+}

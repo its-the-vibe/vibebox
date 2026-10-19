@@ -62,12 +62,14 @@ func newRootCommand(stdout, stderr io.Writer) *cobra.Command {
 }
 
 func newListCommand(jsonOutput *bool) *cobra.Command {
-	return &cobra.Command{
+	var verbose bool
+
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all available queries",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			queryConfigPath := resolveQueryConfigPath()
-			queryRegistry, err := bq.LoadQueryRegistry(queryConfigPath)
+			queryRegistry, parameterRegistry, err := bq.LoadQueryConfig(queryConfigPath)
 			if err != nil {
 				return err
 			}
@@ -79,6 +81,31 @@ func newListCommand(jsonOutput *bool) *cobra.Command {
 			sort.Strings(names)
 
 			out := cmd.OutOrStdout()
+			if verbose {
+				type listEntry struct {
+					Name       string                   `json:"name"`
+					Parameters []bq.ParameterDefinition `json:"parameters,omitempty"`
+				}
+				entries := make([]listEntry, 0, len(names))
+				for _, name := range names {
+					entries = append(entries, listEntry{Name: name, Parameters: parameterRegistry[name]})
+				}
+				if *jsonOutput {
+					return writeJSON(out, entries)
+				}
+				fmt.Fprintln(out, "Available queries:")
+				for _, e := range entries {
+					fmt.Fprintf(out, "  - %s\n", e.Name)
+					if len(e.Parameters) > 0 {
+						parts := make([]string, 0, len(e.Parameters))
+						for _, p := range e.Parameters {
+							parts = append(parts, fmt.Sprintf("%s (%s)", p.Name, p.Type))
+						}
+						fmt.Fprintf(out, "    Parameters: %s\n", strings.Join(parts, ", "))
+					}
+				}
+				return nil
+			}
 			if *jsonOutput {
 				return writeJSON(out, names)
 			}
@@ -90,6 +117,8 @@ func newListCommand(jsonOutput *bool) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Show query parameters")
+	return cmd
 }
 
 func newQueryCommand(jsonOutput *bool) *cobra.Command {
