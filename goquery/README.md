@@ -55,6 +55,29 @@ export GOQUERY_QUERIES_FILE=/path/to/queries.json
 }
 ```
 
+Queries can declare typed parameters, referenced in SQL as `@name`:
+
+```json
+{
+  "my-query": {
+    "file": "queries/my-query.sql",
+    "parameters": [
+      {"name": "user_id", "type": "INT64"},
+      {"name": "start_date", "type": "DATE"}
+    ]
+  }
+}
+```
+
+Supported types: `STRING`, `INT64`, `FLOAT64`, `BOOL`, `DATE` (`YYYY-MM-DD`), `TIMESTAMP` (RFC3339).
+Pass values with `--param`/`-p` (repeatable):
+
+```bash
+./bin/goquery query my-query --param user_id=123 -p start_date=2025-01-01
+```
+
+Execution fails if a declared parameter is missing, a value cannot be converted, or an undeclared parameter is supplied.
+
 Example output format:
 
 ```text

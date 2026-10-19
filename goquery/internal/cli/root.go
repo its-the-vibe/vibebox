@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -92,7 +93,9 @@ func newListCommand(jsonOutput *bool) *cobra.Command {
 }
 
 func newQueryCommand(jsonOutput *bool) *cobra.Command {
-	return &cobra.Command{
+	var rawParams []string
+
+	cmd := &cobra.Command{
 		Use:   "query <query-name>",
 		Short: "Run a predefined BigQuery query",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -104,12 +107,17 @@ func newQueryCommand(jsonOutput *bool) *cobra.Command {
 			}
 
 			queryConfigPath := resolveQueryConfigPath()
-			queryRegistry, err := bq.LoadQueryRegistry(queryConfigPath)
+			queryRegistry, parameterRegistry, err := bq.LoadQueryConfig(queryConfigPath)
 			if err != nil {
 				return err
 			}
 
 			query, err := bq.LookupQuery(queryRegistry, args[0])
+			if err != nil {
+				return err
+			}
+
+			parameters, err := buildQueryParameters(parameterRegistry[args[0]], rawParams)
 			if err != nil {
 				return err
 			}
@@ -126,13 +134,82 @@ func newQueryCommand(jsonOutput *bool) *cobra.Command {
 			}
 			defer service.Close()
 
-			iter, err := service.Run(ctx, query)
+			iter, err := service.RunWithParameters(ctx, query, parameters)
 			if err != nil {
 				return err
 			}
 
 			return printRows(cmd.OutOrStdout(), iter, *jsonOutput)
 		},
+	}
+
+	cmd.Flags().StringArrayVarP(&rawParams, "param", "p", nil, "Query parameter as key=value (repeatable)")
+	return cmd
+}
+
+// buildQueryParameters validates raw key=value flags against the declared
+// parameters and converts them to typed BigQuery query parameters.
+func buildQueryParameters(definitions []bq.ParameterDefinition, rawParams []string) ([]bigquery.QueryParameter, error) {
+	values := make(map[string]string, len(rawParams))
+	for _, raw := range rawParams {
+		name, value, ok := strings.Cut(raw, "=")
+		if !ok || name == "" {
+			return nil, fmt.Errorf("invalid parameter %q: expected key=value", raw)
+		}
+		if _, dup := values[name]; dup {
+			return nil, fmt.Errorf("parameter %q provided more than once", name)
+		}
+		values[name] = value
+	}
+
+	declared := make(map[string]bool, len(definitions))
+	parameters := make([]bigquery.QueryParameter, 0, len(definitions))
+	for _, definition := range definitions {
+		declared[definition.Name] = true
+		raw, ok := values[definition.Name]
+		if !ok {
+			return nil, fmt.Errorf("missing required parameter %q", definition.Name)
+		}
+		value, err := convertParameterValue(definition.Type, raw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid value %q for parameter %q (%s): %w", raw, definition.Name, strings.ToUpper(definition.Type), err)
+		}
+		parameters = append(parameters, bigquery.QueryParameter{Name: definition.Name, Value: value})
+	}
+
+	extra := make([]string, 0)
+	for name := range values {
+		if !declared[name] {
+			extra = append(extra, name)
+		}
+	}
+	if len(extra) > 0 {
+		sort.Strings(extra)
+		return nil, fmt.Errorf("unknown parameter(s) not declared for this query: %s", strings.Join(extra, ", "))
+	}
+
+	if len(parameters) == 0 {
+		return nil, nil
+	}
+	return parameters, nil
+}
+
+func convertParameterValue(paramType, raw string) (any, error) {
+	switch strings.ToUpper(paramType) {
+	case "STRING":
+		return raw, nil
+	case "INT64", "INTEGER":
+		return strconv.ParseInt(raw, 10, 64)
+	case "FLOAT64", "FLOAT":
+		return strconv.ParseFloat(raw, 64)
+	case "BOOL", "BOOLEAN":
+		return strconv.ParseBool(raw)
+	case "DATE":
+		return civil.ParseDate(raw)
+	case "TIMESTAMP":
+		return time.Parse(time.RFC3339, raw)
+	default:
+		return nil, fmt.Errorf("unsupported parameter type %q", paramType)
 	}
 }
 
