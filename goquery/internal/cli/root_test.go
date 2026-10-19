@@ -12,6 +12,7 @@ import (
 
 	"cloud.google.com/go/bigquery"
 	"cloud.google.com/go/civil"
+	"github.com/its-the-vibe/vibebox/goquery/internal/bq"
 )
 
 func TestRunNoArgsShowsHelp(t *testing.T) {
@@ -371,5 +372,60 @@ func TestFormatTableRow(t *testing.T) {
 				t.Fatalf("formatTableRow() = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestBuildQueryParameters(t *testing.T) {
+	defs := []bq.ParameterDefinition{
+		{Name: "id", Type: "INT64"},
+		{Name: "d", Type: "DATE"},
+		{Name: "s", Type: "STRING"},
+		{Name: "b", Type: "BOOL"},
+		{Name: "f", Type: "FLOAT64"},
+		{Name: "t", Type: "TIMESTAMP"},
+	}
+	params, err := buildQueryParameters(defs, []string{"id=123", "d=2025-01-01", "s=a=b", "b=true", "f=1.5", "t=2025-01-01T10:00:00Z"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(params) != 6 || params[0].Value != int64(123) || params[2].Value != "a=b" || params[1].Value != (civil.Date{Year: 2025, Month: 1, Day: 1}) {
+		t.Fatalf("unexpected params: %#v", params)
+	}
+}
+
+func TestBuildQueryParametersErrors(t *testing.T) {
+	defs := []bq.ParameterDefinition{{Name: "id", Type: "INT64"}}
+	tests := []struct {
+		name string
+		raw  []string
+		want string
+	}{
+		{"missing", nil, `missing required parameter "id"`},
+		{"bad type", []string{"id=abc"}, `invalid value "abc" for parameter "id"`},
+		{"bad format", []string{"id"}, "expected key=value"},
+		{"unknown", []string{"id=1", "x=2"}, "unknown parameter(s)"},
+		{"duplicate", []string{"id=1", "id=2"}, "more than once"},
+	}
+	for _, tc := range tests {
+		_, err := buildQueryParameters(defs, tc.raw)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: unexpected error %v", tc.name, err)
+		}
+	}
+	if _, err := buildQueryParameters([]bq.ParameterDefinition{{Name: "x", Type: "JSON"}}, []string{"x=1"}); err == nil {
+		t.Error("expected unsupported type error")
+	}
+}
+
+func TestRunQueryMissingRequiredParameter(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "queries.json")
+	if err := os.WriteFile(cfg, []byte(`{"q":{"sql":"SELECT @id","parameters":[{"name":"id","type":"INT64"}]}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOQUERY_QUERIES_FILE", cfg)
+	if code := Run([]string{"query", "q"}, &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), `missing required parameter "id"`) {
+		t.Fatalf("unexpected result %d %q", code, stderr.String())
 	}
 }

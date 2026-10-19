@@ -71,3 +71,18 @@ func TestLoadQueryRegistryMissingQueryDefinition(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestLoadQueryConfigParameters(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "queries.json")
+	content := `{"q":{"sql":"SELECT @a","parameters":[{"name":"a","type":"INT64"}]}}`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, params, err := LoadQueryConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(params["q"]) != 1 || params["q"][0].Name != "a" || params["q"][0].Type != "INT64" {
+		t.Fatalf("unexpected params: %#v", params)
+	}
+}
