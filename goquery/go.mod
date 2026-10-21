@@ -7,7 +7,7 @@ require (
 	cloud.google.com/go/bigquery v1.85.0
 	github.com/joho/godotenv v1.5.1
 	github.com/spf13/cobra v1.10.2
-	google.golang.org/api v0.305.0
+	google.golang.org/api v0.306.0
 )
 
 require (
@@ -52,7 +52,7 @@ require (
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	google.golang.org/genproto v0.0.0-20260715232425-e75dac1f907d // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260715232425-e75dac1f907d // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20261005182115-fad411399dd8 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20261019180522-ce908d29299b // indirect
 	google.golang.org/grpc v1.84.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
