@@ -4,7 +4,7 @@ go 1.27.3
 
 require (
 	cloud.google.com/go v0.123.0
-	cloud.google.com/go/bigquery v1.85.0
+	cloud.google.com/go/bigquery v1.86.0
 	github.com/joho/godotenv v1.5.1
 	github.com/spf13/cobra v1.10.2
 	google.golang.org/api v0.307.0
@@ -27,7 +27,7 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.3.23 // indirect
 	github.com/googleapis/gax-go/v2 v2.26.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/klauspost/compress v1.16.7 // indirect
+	github.com/klauspost/compress v1.18.7 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
 	github.com/pierrec/lz4/v4 v4.1.18 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
