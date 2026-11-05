@@ -1,1 +1,4 @@
 stmtpng2tsv
+*.tsv
+*.png
+*.pdf
