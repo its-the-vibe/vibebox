@@ -149,7 +149,7 @@ func defaultBackend() string {
 	if v := strings.TrimSpace(os.Getenv("STMTPNG2TSV_BACKEND")); v != "" {
 		return strings.ToLower(v)
 	}
-	return "gemini"
+	return "copilot"
 }
 
 func defaultModel(backend string) string {
@@ -159,7 +159,7 @@ func defaultModel(backend string) string {
 	if backend == "gemini" {
 		return "gemini-flash-latest"
 	}
-	return "gpt-4.1"
+	return "gpt-6-luna"
 }
 
 func newExtractor(backend, model string) (transactionExtractor, error) {
@@ -275,7 +275,13 @@ type copilotExtractor struct {
 
 func newCopilotExtractor(model string) (*copilotExtractor, error) {
 	ctx := context.Background()
-	client := copilot.NewClient(&copilot.ClientOptions{LogLevel: "error"})
+	clientOptions := copilot.ClientOptions{
+		LogLevel: "error",
+		Connection: copilot.StdioConnection{
+			Path: "copilot",
+		},
+	}
+	client := copilot.NewClient(&clientOptions)
 	if err := client.Start(ctx); err != nil {
 		return nil, err
 	}

@@ -126,14 +126,20 @@ func TestInferYearFromText(t *testing.T) {
 
 func TestDefaultBackend(t *testing.T) {
 	os.Unsetenv("STMTPNG2TSV_BACKEND")
-	if got := defaultBackend(); got != "gemini" {
-		t.Errorf("defaultBackend() = %q, want %q", got, "gemini")
+	if got := defaultBackend(); got != "copilot" {
+		t.Errorf("defaultBackend() = %q, want %q", got, "copilot")
 	}
 
 	os.Setenv("STMTPNG2TSV_BACKEND", "copilot")
 	defer os.Unsetenv("STMTPNG2TSV_BACKEND")
 	if got := defaultBackend(); got != "copilot" {
 		t.Errorf("defaultBackend() = %q, want %q", got, "copilot")
+	}
+
+	os.Setenv("STMTPNG2TSV_BACKEND", "gemini")
+	defer os.Unsetenv("STMTPNG2TSV_BACKEND")
+	if got := defaultBackend(); got != "gemini" {
+		t.Errorf("defaultBackend() = %q, want %q", got, "gemini")
 	}
 }
 
