@@ -129,7 +129,7 @@ func TestDeleteOldestDestroysEarliestActiveVersion(t *testing.T) {
 	if code := run([]string{"versions", "delete-oldest", "my-secret"}, &stdout, &stderr, runner); code != 0 {
 		t.Fatalf("run failed: %s", stderr.String())
 	}
-	want := []string{"secrets", "versions", "destroy", "1", "--secret", "my-secret"}
+	want := []string{"secrets", "versions", "destroy", "1", "--quiet", "--secret", "my-secret"}
 	if strings.Join(runner.calls[1].args, " ") != strings.Join(want, " ") {
 		t.Fatalf("unexpected destroy args: %v", runner.calls[1].args)
 	}
