@@ -145,8 +145,8 @@ func TestDefaultBackend(t *testing.T) {
 
 func TestDefaultModel(t *testing.T) {
 	os.Unsetenv("STMTPNG2TSV_MODEL")
-	if got := defaultModel("copilot"); got != "gpt-4.1" {
-		t.Errorf("defaultModel(copilot) = %q, want %q", got, "gpt-4.1")
+	if got := defaultModel("copilot"); got != "gpt-6-luna" {
+		t.Errorf("defaultModel(copilot) = %q, want %q", got, "gpt-6-luna")
 	}
 	if got := defaultModel("gemini"); got != "gemini-flash-latest" {
 		t.Errorf("defaultModel(gemini) = %q, want %q", got, "gemini-flash-latest")
