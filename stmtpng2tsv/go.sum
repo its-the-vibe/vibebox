@@ -34,6 +34,8 @@ github.com/github/copilot-sdk/go v1.0.31 h1:d595sm4Lqpa8qr0LGr3znbKTd24tba5oXAZE
 github.com/github/copilot-sdk/go v1.0.31/go.mod h1:guyXraJgYPw0tQ+Yfrl89O0uTlk3QLlAQ9chjvFOTcY=
 github.com/github/copilot-sdk/go v1.0.32 h1:vKAAoSqbCfEH47VVlg1l8w+84D4JUpVsw2xhx2cCw+s=
 github.com/github/copilot-sdk/go v1.0.32/go.mod h1:8P5anw2Rv3kJAXZZgVf5jHls+i8Aquy4Bl7OGLmXstE=
+github.com/github/copilot-sdk/go v1.0.34 h1:WX2fPUsqeJT+963s31sVBQEAPNHFHk3WzfWYhskS6iw=
+github.com/github/copilot-sdk/go v1.0.34/go.mod h1:8P5anw2Rv3kJAXZZgVf5jHls+i8Aquy4Bl7OGLmXstE=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
 github.com/go-logr/logr v1.4.3 h1:CjnDlHq8ikf6E492q6eKboGOC0T8CDaOvkHCIg8idEI=
 github.com/go-logr/logr v1.4.3/go.mod h1:9T104GzyrTigFIr8wt5mBrctHMim0Nb2HLGrmQ40KvY=
