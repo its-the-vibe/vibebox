@@ -11,6 +11,7 @@ Toolbox containing vibetools.
 - [`goquery`](./goquery): Runs predefined BigQuery SQL queries through a subcommand CLI (`goquery query <query-name>`).
 - [`docker-override`](./docker-override): Creates Docker Compose override files that replace each service definition with a shared image.
 - [`gsec`](./gsec): Views and manages Google Cloud Secret Manager secrets and versions.
+- [`go-slack`](./go-slack): Retrieves Slack messages and file information through a command-line interface.
 
 ## Development
 

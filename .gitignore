@@ -35,5 +35,6 @@ go.work.sum
 stmtdate/stmtdate
 docker-override/docker-override
 gsec/gsec
+go-slack/go-slack
 
 .DS_Store

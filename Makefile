@@ -1,4 +1,4 @@
-SUBDIRS := stmtdate stmtpng2tsv goquery docker-override gsec
+SUBDIRS := stmtdate stmtpng2tsv goquery docker-override gsec go-slack
 
 .PHONY: build test tidy
 
