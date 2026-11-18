@@ -18,8 +18,8 @@ import (
 	"sync"
 	"time"
 
-	copilot "github.com/github/copilot-sdk/go"
 	"github.com/joho/godotenv"
+	copilot "github.com/microsoft/copilot-sdk/go/v2"
 	"google.golang.org/genai"
 )
 
@@ -276,8 +276,11 @@ type copilotExtractor struct {
 func newCopilotExtractor(model string) (*copilotExtractor, error) {
 	ctx := context.Background()
 	clientOptions := copilot.ClientOptions{
-		LogLevel: "error",
-		Connection: copilot.StdioConnection{
+		Mode: copilot.ModeCodingAgent,
+		Observability: copilot.ClientObservabilityOptions{
+			LogLevel: "error",
+		},
+		Runtime: copilot.SpawnedStdioConnection{
 			Path: "copilot",
 		},
 	}
@@ -286,9 +289,11 @@ func newCopilotExtractor(model string) (*copilotExtractor, error) {
 		return nil, err
 	}
 
-	session, err := client.CreateSession(ctx, &copilot.SessionConfig{
-		Model:               model,
-		OnPermissionRequest: copilot.PermissionHandler.ApproveAll,
+	session, err := client.CreateSession(ctx, &copilot.CreateSessionOptions{
+		Model: model,
+		Permissions: copilot.SessionPermissionOptions{
+			OnRequest: copilot.PermissionHandler.ApproveAll,
+		},
 	})
 	if err != nil {
 		_ = client.Stop()
